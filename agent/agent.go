@@ -65,14 +65,25 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 		userMessage := llmResponse.NextMessage
 		fmt.Printf("Sending to VA: %s\n", userMessage)
 
-		_, knovvuResp, err := knovvu.SendKnovvuMessage(a.Project, knovvuToken, userMessage, conversationID) // Replace with your project name
+		_, knovvuResp, err := knovvu.SendKnovvuMessage(a.Project, knovvuToken, userMessage, conversationID)
+		// Even if an error occurs, we might have a partial response or want to log specific details.
+		// However, the primary concern is a nil pointer dereference if knovvuResp is nil.
 		if err != nil {
+			// Log the error and decide if we should continue or return.
+			// For now, we'll return, but in a more complex scenario, we might try to recover or use a default VA response.
+			log.Printf("Error sending message to Knovvu: %v. Knovvu response object: %+v", err, knovvuResp)
 			return nil, fmt.Errorf("failed to send message to Knovvu: %w", err)
 		}
 
 		vaResponse := "No response text found."
-		if knovvuResp != nil {
+		if knovvuResp != nil && knovvuResp.Text != "" { // Added check for non-empty Text
 			vaResponse = knovvuResp.Text
+		} else if knovvuResp != nil {
+			log.Printf("Knovvu response was not nil, but Text field was empty. Full response: %+v", knovvuResp)
+			// vaResponse remains "No response text found."
+		} else {
+			log.Println("Knovvu response was nil.")
+			// vaResponse remains "No response text found."
 		}
 		fmt.Printf("Received from VA: %s\n", vaResponse)
 

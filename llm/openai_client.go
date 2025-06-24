@@ -95,24 +95,73 @@ func GenerateContentREST_open(input LLMInput) (*LLMOutput, error) {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 
 		resp, err = client.Do(req)
-		if err == nil {
+		if err == nil && resp != nil && resp.StatusCode == http.StatusOK {
+			// Success
 			break
 		}
-		lastErr = err
-		// if non-timeout or last attempt, return
-		if ctx.Err() != nil || attempt == maxRetries-1 {
-			return nil, fmt.Errorf("request failed after %d attempts: %w", attempt+1, err)
+		// If err is not nil, or status code is not OK.
+		if err != nil {
+			lastErr = err // Store network/client error
+			fmt.Printf("OpenAI API request failed with client/network error (attempt %d/%d): %v\n", attempt+1, maxRetries, err)
+		} else if resp != nil { // err is nil, but status code is not OK
+			// Store the response status code as an error to potentially retry
+			lastErr = fmt.Errorf("OpenAI API returned status: %d", resp.StatusCode)
+			fmt.Printf("OpenAI API request failed with status %d (attempt %d/%d)\n", resp.StatusCode, attempt+1, maxRetries)
 		}
+
+		shouldRetry := false
+		if ctx.Err() != nil { // Overall context cancelled
+			return nil, fmt.Errorf("OpenAI request cancelled or timed out during retry: %w", ctx.Err())
+		}
+
+		if err != nil { // Network error or client timeout from client.Do(req)
+			errMsg := err.Error()
+			if errMsg == "context deadline exceeded" || // This refers to client.Timeout
+				errMsg == "Client.Timeout exceeded while awaiting headers" ||
+				errMsg == "net/http: timeout awaiting response headers" {
+				shouldRetry = true
+			}
+		} else if resp != nil { // HTTP response received, check status code for retry
+			switch resp.StatusCode {
+			case http.StatusTooManyRequests, // 429
+				http.StatusInternalServerError, // 500
+				http.StatusBadGateway,          // 502
+				http.StatusServiceUnavailable,  // 503
+				http.StatusGatewayTimeout:      // 504
+				shouldRetry = true
+			}
+			// Close non-nil response body if we are retrying or if it's a terminal non-OK status
+			if resp.Body != nil {
+				resp.Body.Close()
+			}
+		}
+
+		if !shouldRetry || attempt == maxRetries-1 {
+			// If not retrying or last attempt, break to handle error outside loop
+			break
+		}
+		// Sleep before next attempt only if retrying and not the last attempt
+		// (Handled by the time.Sleep at the start of the loop for attempt > 0)
 	}
 
-	if resp == nil {
-		return nil, fmt.Errorf("all attempts failed, last error: %w", lastErr)
+	// After the loop, check the outcome
+	if ctx.Err() != nil { // Check overall context timeout first
+		return nil, fmt.Errorf("OpenAI operation cancelled or timed out after %d attempts. Last error: %v", maxRetries, lastErr)
 	}
+
+	if resp == nil { // All attempts failed, possibly due to network errors
+		return nil, fmt.Errorf("all %d OpenAI request attempts failed. Last error: %w", maxRetries, lastErr)
+	}
+	// If we are here, resp is not nil. We must close its body.
+	// If it was closed in the loop (for retriable errors), closing again is fine.
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: status %d, body %s", resp.StatusCode, string(body))
+		body, readErr := io.ReadAll(resp.Body) // Read body for error message
+		if readErr != nil {
+			return nil, fmt.Errorf("OpenAI API error: status %d, failed to read error body: %w", resp.StatusCode, readErr)
+		}
+		return nil, fmt.Errorf("OpenAI API error: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	respBytes, err := io.ReadAll(resp.Body)
@@ -130,9 +179,15 @@ func GenerateContentREST_open(input LLMInput) (*LLMOutput, error) {
 	}
 
 	raw := chatResp.Choices[0].Message.Content
+	if raw == "" {
+		// Similar to Gemini client, if the content string is empty,
+		// unmarshalling it would lead to zero-values, which might be misleading.
+		return nil, fmt.Errorf("OpenAI API returned empty message content")
+	}
+
 	var output LLMOutput
 	if err := json.Unmarshal([]byte(raw), &output); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal LLMOutput: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal LLMOutput from OpenAI response: %w. Raw content: %s", err, raw)
 	}
 
 	return &output, nil
