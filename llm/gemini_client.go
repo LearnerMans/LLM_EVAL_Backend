@@ -211,30 +211,67 @@ func GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 		// Store the error for potential reporting
 		lastErr = err
 
-		// Check if this is a timeout or transient error that's worth retrying
-		errMsg := err.Error()
-		isTimeout := errMsg == "context deadline exceeded" ||
-			errMsg == "Client.Timeout exceeded while awaiting headers" ||
-			errMsg == "net/http: timeout awaiting response headers"
-
-		// If it's not a timeout or we've used all our retries, return the error
-		if !isTimeout || attempt == maxRetries-1 {
-			if isTimeout {
-				return nil, fmt.Errorf("HTTP request timed out after %d attempts. This could be due to network issues or the Gemini API being overloaded. Please try again later", maxRetries)
+		// Check if this is a timeout or a retriable HTTP status code
+		shouldRetry := false
+		if err != nil { // Network error or client timeout
+			errMsg := err.Error()
+			if errMsg == "context deadline exceeded" ||
+				errMsg == "Client.Timeout exceeded while awaiting headers" ||
+				errMsg == "net/http: timeout awaiting response headers" {
+				shouldRetry = true
+				fmt.Printf("Gemini API request timed out: %v\n", err)
+			} else {
+				// For other errors, don't retry immediately, could be a persistent issue
+				fmt.Printf("Gemini API request failed with network/client error: %v\n", err)
 			}
-			return nil, fmt.Errorf("HTTP request failed after %d attempts: %w", attempt+1, err)
+		} else if resp != nil { // HTTP response received, check status code
+			switch resp.StatusCode {
+			case http.StatusTooManyRequests, // 429
+				http.StatusInternalServerError, // 500
+				http.StatusBadGateway,          // 502
+				http.StatusServiceUnavailable,  // 503
+				http.StatusGatewayTimeout:      // 504
+				shouldRetry = true
+				// It's good practice to close the response body of a failed request
+				// if we are going to retry, to free up resources.
+				if resp.Body != nil {
+					resp.Body.Close()
+				}
+				fmt.Printf("Gemini API request failed with status %d, will retry.\n", resp.StatusCode)
+			default:
+				// Non-retriable HTTP status or success (which would have broken the loop)
+				// If it's a non-OK status that we don't retry, we'll handle it after the loop.
+			}
 		}
-		// Otherwise, we'll retry
+
+		// If we shouldn't retry or we've used all our retries, break the loop.
+		// The error/response will be handled outside the loop.
+		if !shouldRetry || attempt == maxRetries-1 {
+			break
+		}
+		// Otherwise, we'll retry (after sleep)
 	}
 
-	// If all retries failed
-	if resp == nil {
-		return nil, fmt.Errorf("all %d request attempts failed, last error: %w", maxRetries, lastErr)
+	// After the loop, check the outcome
+	if lastErr != nil && resp == nil { // Indicates network/client errors for all attempts
+		// Check if the overall context timed out
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("operation canceled or timed out after %d attempts: %w. Last error: %v", maxRetries, ctx.Err(), lastErr)
+		default:
+			return nil, fmt.Errorf("all %d request attempts failed due to network/client errors, last error: %w", maxRetries, lastErr)
+		}
 	}
-	defer resp.Body.Close()
+	if resp == nil { // Should not happen if lastErr is nil, but as a safeguard
+		return nil, fmt.Errorf("no response received from Gemini API after %d attempts", maxRetries)
+	}
+	defer resp.Body.Close() // Ensure body is closed here for the successful or final failed response
 
 	if resp.StatusCode != http.StatusOK {
-		responseBodyBytes, _ := io.ReadAll(resp.Body)
+		responseBodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("API returned non-OK status: %d, and failed to read error body: %w", resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("API returned non-OK status: %d, body: %s", resp.StatusCode, string(responseBodyBytes))
 	}
 
@@ -257,8 +294,15 @@ func GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 	}
 
 	rawJSONOutput := geminiResponse.Candidates[0].Content.Parts[0].Text
+	// It's possible for the LLM to return an empty JSON string, e.g. "{}" if instructed or if something goes wrong.
+	// Or it could be an empty text string "" if the model is misbehaving.
+	// Unmarshaling "" into a struct will not error but result in zero values.
+	// Unmarshaling "{}" is valid.
+	// We should decide if an empty text string for rawJSONOutput is an error.
+	// For now, let's assume an empty text string from the Part is an issue.
 	if rawJSONOutput == "" {
-		return nil, fmt.Errorf("empty text content in the first candidate from LLM API")
+		// Consider if this should be a more structured error or a specific LLMOutput state
+		return nil, fmt.Errorf("LLM API returned empty text content in the response part")
 	}
 
 	var output LLMOutput
