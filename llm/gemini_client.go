@@ -91,6 +91,9 @@ type GeminiAPIResponse struct {
 
 // GenerateContentREST interacts with the Gemini LLM via REST API to generate content based on the input.
 // It takes an LLMInput struct and returns an LLMOutput struct or an error.
+
+var geminiAPIEndpointFormat = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s"
+
 func GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 	// Set up a context with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -102,7 +105,7 @@ func GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 	}
 
 	modelName := "gemini-2.5-flash"
-	apiEndpoint := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", modelName, apiKey)
+	apiEndpoint := fmt.Sprintf(geminiAPIEndpointFormat, modelName, apiKey)
 
 	// Convert the LLMInput struct to a JSON string for the user prompt
 	inputJSONBytes, err := json.Marshal(input)

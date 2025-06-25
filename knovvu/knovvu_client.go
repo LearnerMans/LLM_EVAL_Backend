@@ -13,6 +13,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Package level variables for URLs to allow overriding in tests
+var (
+	tokenURL    = "https://identity.eu.va.knovvu.com/connect/token"
+	messagesURL = "https://eu.va.knovvu.com/magpie/ext-api/messages/synchronized"
+)
+
 type KnovvuRequest struct {
 	Text         string            `json:"text"`
 	Conversation map[string]string `json:"conversation"`
@@ -38,7 +44,10 @@ type KnovvuResponse struct {
 func GetKnovvuToken() (string, error) {
 	err := godotenv.Load(".env")
 	if err != nil {
-		return "", fmt.Errorf("error loading .env file: %w", err)
+		// Log the error but don't fail immediately,
+		// as env vars might be set through other means (e.g., system environment).
+		// Using fmt.Fprintf to os.Stderr for logging in this context.
+		fmt.Fprintf(os.Stderr, "knovvu.GetKnovvuToken: info: error loading .env file (this is often ignorable if env vars are set by other means): %v\n", err)
 	}
 
 	clientID := os.Getenv("KNOVVU_CLIENT_ID")
@@ -52,7 +61,7 @@ func GetKnovvuToken() (string, error) {
 	form.Add("client_id", clientID)
 	form.Add("client_secret", clientSecret)
 
-	tokenURL := "https://identity.eu.va.knovvu.com/connect/token"
+	// Use the package-level variable tokenURL
 	req, err := http.NewRequest("POST", tokenURL, bytes.NewBufferString(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("failed to create token request: %w", err)
@@ -90,8 +99,7 @@ func GetKnovvuToken() (string, error) {
 }
 
 func SendKnovvuMessage(projectName, token, text, conversationID string) ([]byte, *KnovvuResponse, error) {
-	url := "https://eu.va.knovvu.com/magpie/ext-api/messages/synchronized"
-
+	// Use the package-level variable messagesURL
 	requestBody := KnovvuRequest{
 		Text: text,
 		Conversation: map[string]string{
@@ -110,7 +118,7 @@ func SendKnovvuMessage(projectName, token, text, conversationID string) ([]byte,
 		return nil, nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", messagesURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create request: %w", err)
 	}

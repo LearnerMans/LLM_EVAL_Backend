@@ -9,8 +9,22 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+var currentDbPath = "./db.db" // Default path, can be changed for testing
+
+// GetDBPath returns the current path used for the SQLite database.
+func GetDBPath() string {
+	return currentDbPath
+}
+
+// SetDBPath sets a new path for the SQLite database.
+// This is primarily intended for testing purposes.
+func SetDBPath(newPath string) {
+	currentDbPath = newPath
+}
+
 func InitDB() {
-	const dbPath = "./db.db"
+	// Use the configurable currentDbPath instead of a const
+	dbPath := currentDbPath
 
 	// Check if the DB file already exists
 	_, err := os.Stat(dbPath)

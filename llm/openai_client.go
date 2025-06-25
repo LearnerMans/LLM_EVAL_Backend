@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// Package level variable for the OpenAI API endpoint to allow overriding in tests
+var openAIAPIEndpoint = "https://api.openai.com/v1/chat/completions"
+
 // ChatCompletionRequest represents the OpenAI chat completion payload.
 type ChatCompletionRequest struct {
 	Model       string        `json:"model"`
@@ -44,7 +47,9 @@ func GenerateContentREST_open(input LLMInput) (*LLMOutput, error) {
 		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set")
 	}
 
-	apiEndpoint := "https://api.openai.com/v1/chat/completions"
+	// Use package-level variable for the API endpoint
+	// apiEndpoint := "https://api.openai.com/v1/chat/completions" // Original
+	currentAPIEndpoint := openAIAPIEndpoint // Use the global variable
 
 	// Marshal input to JSON for user message
 	inputJSON, err := json.Marshal(input)
@@ -87,31 +92,43 @@ func GenerateContentREST_open(input LLMInput) (*LLMOutput, error) {
 		}
 
 		// Prepare request
-		req, err := http.NewRequestWithContext(ctx, "POST", apiEndpoint, bytes.NewBuffer(jsonBody))
+		// Prepare request for the current attempt
+		req, err := http.NewRequestWithContext(ctx, "POST", currentAPIEndpoint, bytes.NewBuffer(jsonBody))
 		if err != nil {
-			return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+			// This error is critical for this attempt, but loop might retry.
+			// However, if NewRequestWithContext fails, it's likely to fail repeatedly.
+			// Consider returning error immediately or let retry logic handle it if it's transient (unlikely for this func).
+			return nil, fmt.Errorf("failed to create HTTP request on attempt %d: %w", attempt+1, err)
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 
 		resp, err = client.Do(req)
 		if err == nil {
-			break
+			break // Success
 		}
 		lastErr = err
-		// if non-timeout or last attempt, return
-		if ctx.Err() != nil || attempt == maxRetries-1 {
-			return nil, fmt.Errorf("request failed after %d attempts: %w", attempt+1, err)
+
+		// Check if context is done (e.g., timeout) before retrying
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("context done during request/retry: %w (last error: %v)", ctx.Err(), lastErr)
+		}
+
+		// If it's the last attempt, return the error
+		if attempt == maxRetries-1 {
+			return nil, fmt.Errorf("request failed after %d attempts: %w", attempt+1, lastErr)
 		}
 	}
 
 	if resp == nil {
-		return nil, fmt.Errorf("all attempts failed, last error: %w", lastErr)
+		// This case should ideally be caught by the loop's error handling,
+		// but as a safeguard:
+		return nil, fmt.Errorf("all request attempts failed, last error: %w", lastErr)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body) // Read body for error details
 		return nil, fmt.Errorf("API error: status %d, body %s", resp.StatusCode, string(body))
 	}
 
