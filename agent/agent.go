@@ -15,6 +15,7 @@ type Agent struct {
 	ExpectedOutcome string
 	State           llm.CurrentState
 	Project         string
+	LLM             llm.LLM
 }
 
 // NewAgent creates a new agent for a given scenario.
@@ -49,7 +50,7 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 			Version:         "2.0",
 		}
 
-		llmResponse, err := llm.GenerateContentREST(llmInput)
+		llmResponse, err := a.LLM.GenerateContentREST(llmInput)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate content from LLM: %w", err)
 		}

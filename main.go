@@ -1,13 +1,12 @@
 package main
 
 import (
+	"evaluator/agent"
+	"evaluator/llm"
 	"fmt"
 	"log"
 
 	"github.com/joho/godotenv"
-
-	"evaluator/agent"
-	"evaluator/llm"
 )
 
 func main() {

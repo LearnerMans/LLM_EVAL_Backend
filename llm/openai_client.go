@@ -34,9 +34,9 @@ type ChatCompletionResponse struct {
 }
 
 // GenerateContentREST interacts with the OpenAI Chat API via REST to generate content.
-func GenerateContentREST_open(input LLMInput) (*LLMOutput, error) {
+func (c *OpenAIClient) GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 	// Set up a context with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout)
 	defer cancel()
 
 	apiKey := os.Getenv("OPENAI_API_KEY")
