@@ -56,7 +56,7 @@ type GeminiAPIResponse struct {
 
 // GenerateContentREST interacts with the Gemini LLM via REST API to generate content based on the input.
 // It takes an LLMInput struct and returns an LLMOutput struct or an error.
-func (c *GeminiClient) GenerateContentREST(input LLMInput) (*LLMOutput, error) {
+func (c *GeminiClient) GenerateContentREST(prompt string, input LLMInput) (*LLMOutput, error) {
 	// Set up a context with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout)
 	defer cancel()
@@ -77,7 +77,7 @@ func (c *GeminiClient) GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 	userPrompt := string(inputJSONBytes)
 
 	// Define the system instruction
-	systemInstructionText := SystemPrompt
+	systemInstructionText := prompt
 
 	// Construct the request body
 	requestBody := GeminiAPIRequest{

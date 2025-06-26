@@ -48,7 +48,7 @@ type CohereChatResponse struct {
 }
 
 // GenerateContentREST implements LLM for CohereClient
-func (c *CohereClient) GenerateContentREST(input LLMInput) (*LLMOutput, error) {
+func (c *CohereClient) GenerateContentREST(prompt string, input LLMInput) (*LLMOutput, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout)
 	defer cancel()
 
@@ -60,7 +60,7 @@ func (c *CohereClient) GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 	apiEndpoint := "https://api.cohere.com/v2/chat"
 
 	// Prepare the system message
-	systemPrompt := SystemPrompt
+	systemPrompt := prompt
 
 	// Prepare the user message (input as JSON string)
 	inputJSON, err := json.Marshal(input)
@@ -192,4 +192,134 @@ func (c *CohereClient) GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 	}
 
 	return &output, nil
+}
+
+func (c *CohereClient) GenerateJudgmentREST(judgePrompt string, input JudgeInput) (*JudgmentResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout)
+	defer cancel()
+
+	apiKey := c.apiKey
+	if apiKey == "" {
+		return nil, fmt.Errorf("COHERE_API_KEY environment variable not set")
+	}
+
+	apiEndpoint := "https://api.cohere.com/v2/chat"
+
+	// System prompt as in your agent design (give Judge instructions here)
+	systemPrompt := judgePrompt
+
+	// User message is the JudgeInput as JSON
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JudgeInput: %w", err)
+	}
+
+	messages := []CohereChatMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: string(inputJSON)},
+	}
+
+	// JSON schema for JudgmentResult
+	jsonSchema := map[string]interface{}{
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"type":    "object",
+		"properties": map[string]interface{}{
+			"judgment": map[string]interface{}{
+				"type":        "string",
+				"description": "Final verdict on whether the scenario was completed as intended",
+			},
+			"confidence": map[string]interface{}{
+				"type":        "string",
+				"enum":        []string{"high", "medium", "low"},
+				"description": "Level of confidence in the judgment",
+			},
+			"evidence_summary": map[string]interface{}{
+				"type":        "string",
+				"description": "Concise summary of evidence from the conversation that led to the verdict",
+			},
+			"scenario_completion_score": map[string]interface{}{
+				"type":        "number",
+				"description": "Score 0-1 for scenario completion",
+			},
+			"conversation_quality_score": map[string]interface{}{
+				"type":        "number",
+				"description": "Score 0-1 for overall conversation quality",
+			},
+		},
+		"required": []string{"judgment", "confidence", "evidence_summary", "scenario_completion_score", "conversation_quality_score"},
+	}
+
+	requestBody := CohereChatRequest{
+		Messages:       messages,
+		Temperature:    0,
+		Model:          c.Model,
+		ResponseFormat: CohereResponseFormat{Type: "json_object", JSONSchema: jsonSchema},
+	}
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	client := &http.Client{Timeout: 60 * time.Second}
+
+	var resp *http.Response
+	var lastErr error
+	maxRetries := 3
+	retryDelay := 2 * time.Second
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(retryDelay)
+			retryDelay *= 2
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", apiEndpoint, bytes.NewBuffer(jsonBody))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("accept", "application/json")
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+
+		resp, err = client.Do(req)
+		if err == nil {
+			break
+		}
+		lastErr = err
+		if ctx.Err() != nil || attempt == maxRetries-1 {
+			return nil, fmt.Errorf("request failed after %d attempts: %w", attempt+1, err)
+		}
+	}
+
+	if resp == nil {
+		return nil, fmt.Errorf("all attempts failed, last error: %w", lastErr)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API error: status %d, body %s", resp.StatusCode, string(body))
+	}
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var chatResp CohereChatResponse
+	if err := json.Unmarshal(respBytes, &chatResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal chat response: %w", err)
+	}
+
+	if len(chatResp.Message.Content) == 0 || chatResp.Message.Content[0].Text == "" {
+		return nil, fmt.Errorf("empty text field in Cohere API response")
+	}
+
+	var result JudgmentResult
+	if err := json.Unmarshal([]byte(chatResp.Message.Content[0].Text), &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JudgmentResult: %w", err)
+	}
+
+	return &result, nil
 }

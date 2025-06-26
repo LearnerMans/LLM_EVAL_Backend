@@ -25,7 +25,8 @@ var (
 )
 
 type LLM interface {
-	GenerateContentREST(input LLMInput) (*LLMOutput, error)
+	GenerateContentREST(prompt string, input LLMInput) (*LLMOutput, error)
+	GenerateJudgmentREST(judgePrompt string, input JudgeInput) (*JudgmentResult, error)
 }
 
 type GeminiClient struct {
@@ -110,4 +111,25 @@ type LLMOutput struct {
 	SafetyCheck     string   `json:"safety_check"`
 	ErrorLogs       []string `json:"error_logs"`
 	AdaptationNotes string   `json:"adaptation_notes"`
+}
+
+type JudgeInput struct {
+	Scenario     string        `json:"scenario"`
+	Conversation []HistoryItem `json:"conversation"`
+}
+
+type JudgmentResult struct {
+	Judgment                 string  `json:"judgment"`
+	Confidence               string  `json:"confidence"`
+	EvidenceSummary          string  `json:"evidence_summary"`
+	ScenarioCompletionScore  float64 `json:"scenario_completion_score"`
+	ConversationQualityScore float64 `json:"conversation_quality_score"`
+}
+
+func (c *OpenAIClient) GenerateJudgmentREST(judgePrompt string, input JudgeInput) (*JudgmentResult, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (c *GeminiClient) GenerateJudgmentREST(judgePrompt string, input JudgeInput) (*JudgmentResult, error) {
+	return nil, fmt.Errorf("not implemented")
 }

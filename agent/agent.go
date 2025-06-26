@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"database/sql"
 	"evaluator/knovvu"
 	"evaluator/llm"
 	"fmt"
@@ -16,16 +17,18 @@ type Agent struct {
 	State           llm.CurrentState
 	Project         string
 	LLM             llm.LLM
+	DB              *sql.DB
 }
 
 // NewAgent creates a new agent for a given scenario.
-func NewAgent(project, scenario, expectedOutcome string, initialState llm.CurrentState, llm llm.LLM) *Agent {
+func NewAgent(project, scenario, expectedOutcome string, initialState llm.CurrentState, llm llm.LLM, db *sql.DB) *Agent {
 	return &Agent{
 		Scenario:        scenario,
 		ExpectedOutcome: expectedOutcome,
 		State:           initialState,
 		Project:         project,
 		LLM:             llm,
+		DB:              db,
 	}
 }
 
@@ -51,7 +54,7 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 			Version:         "2.0",
 		}
 
-		llmResponse, err := a.LLM.GenerateContentREST(llmInput)
+		llmResponse, err := a.LLM.GenerateContentREST(llm.SystemPrompt, llmInput)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate content from LLM: %w", err)
 		}
@@ -67,24 +70,25 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 		// 2. Send the message to Knovvu VA
 		userMessage := llmResponse.NextMessage
 		fmt.Printf("Sending to VA: %s\n", userMessage)
+		if userMessage != "" {
 
-		_, knovvuResp, err := knovvu.SendKnovvuMessage(a.Project, knovvuToken, userMessage, conversationID) // Replace with your project name
-		if err != nil {
-			return nil, fmt.Errorf("failed to send message to Knovvu: %w", err)
+			_, knovvuResp, err := knovvu.SendKnovvuMessage(a.Project, knovvuToken, userMessage, conversationID) // Replace with your project name
+			if err != nil {
+				return nil, fmt.Errorf("failed to send message to Knovvu: %w", err)
+			}
+
+			vaResponse := "No response text found."
+			if knovvuResp != nil {
+				vaResponse = knovvuResp.Text
+			}
+			fmt.Printf("Received from VA: %s\n", vaResponse)
+			// 3. Update the history
+			a.State.History = append(a.State.History, llm.HistoryItem{
+				Turn:      a.State.TurnCount,
+				User:      userMessage,
+				Assistant: vaResponse,
+			})
 		}
-
-		vaResponse := "No response text found."
-		if knovvuResp != nil {
-			vaResponse = knovvuResp.Text
-		}
-		fmt.Printf("Received from VA: %s\n", vaResponse)
-
-		// 3. Update the history
-		a.State.History = append(a.State.History, llm.HistoryItem{
-			Turn:      a.State.TurnCount,
-			User:      userMessage,
-			Assistant: vaResponse,
-		})
 
 		// 4. Check for fulfillment to break the loop
 		if a.State.Fulfilled {
@@ -92,7 +96,17 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 			break
 		}
 	}
+	judgeInput := llm.JudgeInput{Scenario: a.Scenario, Conversation: a.State.History}
+	judgeReslts, err := a.LLM.GenerateJudgmentREST(llm.JudgePrompt, judgeInput)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate Judgement Results from LLM: %w", err)
+	}
 
+	fmt.Printf("Judgement is %s\n", judgeReslts.Judgment)
+	fmt.Printf("Confidence is %s\n", judgeReslts.Confidence)
+	fmt.Printf("Scenario Completion Score is %v\n", judgeReslts.ScenarioCompletionScore)
+	fmt.Printf("Conversation Quality Score is %v\n", judgeReslts.ConversationQualityScore)
+	fmt.Printf("Evidence Summary %v\n\n", judgeReslts.EvidenceSummary)
 	if !a.State.Fulfilled {
 		fmt.Println("\n--- Max turns reached ---")
 	}

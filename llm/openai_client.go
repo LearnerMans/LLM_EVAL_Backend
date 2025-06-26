@@ -34,7 +34,7 @@ type ChatCompletionResponse struct {
 }
 
 // GenerateContentREST interacts with the OpenAI Chat API via REST to generate content.
-func (c *OpenAIClient) GenerateContentREST(input LLMInput) (*LLMOutput, error) {
+func (c *OpenAIClient) GenerateContentREST(prompt string, input LLMInput) (*LLMOutput, error) {
 	// Set up a context with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout)
 	defer cancel()
@@ -53,7 +53,7 @@ func (c *OpenAIClient) GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 	}
 
 	// Prepare messages
-	systemPrompt := SystemPrompt // define SystemPrompt elsewhere or inline as needed
+	systemPrompt := prompt // define SystemPrompt elsewhere or inline as needed
 	messages := []ChatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: string(inputJSON)},

@@ -2,6 +2,7 @@ package main
 
 import (
 	"evaluator/agent"
+	"evaluator/db"
 	"evaluator/llm"
 	"fmt"
 	"log"
@@ -16,6 +17,13 @@ func main() {
 		log.Printf("Warning: Error loading .env file: %v", err)
 		log.Println("Continuing with environment variables that might be set in the system")
 	}
+
+	// Establish DB connection
+	dbConn, err := db.ConnectDB()
+	if err != nil {
+		log.Fatalf("Error connecting to database: %v", err)
+	}
+	defer dbConn.Close()
 
 	// //CreateDB
 	// db.InitDB()
@@ -33,7 +41,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error creating LLM client: %v", err)
 	}
-	testingAgent := agent.NewAgent("MOHAP-BOT", scenario, expeted_Outcome, initialState, llmClient)
+	testingAgent := agent.NewAgent("MOHAP-BOT", scenario, expeted_Outcome, initialState, llmClient, dbConn)
 	//Run the testing agent
 	_, err = testingAgent.Run()
 	if err != nil {
