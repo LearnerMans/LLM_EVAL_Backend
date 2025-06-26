@@ -29,7 +29,11 @@ func main() {
 		MaxTurns:  5,
 		Fulfilled: false,
 	}
-	testingAgent := agent.NewAgent("MOHAP-BOT", scenario, expeted_Outcome, initialState)
+	llmClient, err := llm.NewLLMClient(llm.CohereProvider, llm.CohereModel)
+	if err != nil {
+		log.Fatalf("Error creating LLM client: %v", err)
+	}
+	testingAgent := agent.NewAgent("MOHAP-BOT", scenario, expeted_Outcome, initialState, llmClient)
 	//Run the testing agent
 	_, err = testingAgent.Run()
 	if err != nil {

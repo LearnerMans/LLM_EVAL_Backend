@@ -19,12 +19,13 @@ type Agent struct {
 }
 
 // NewAgent creates a new agent for a given scenario.
-func NewAgent(project, scenario, expectedOutcome string, initialState llm.CurrentState) *Agent {
+func NewAgent(project, scenario, expectedOutcome string, initialState llm.CurrentState, llm llm.LLM) *Agent {
 	return &Agent{
 		Scenario:        scenario,
 		ExpectedOutcome: expectedOutcome,
 		State:           initialState,
 		Project:         project,
+		LLM:             llm,
 	}
 }
 
@@ -61,6 +62,7 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 		// Log the LLM's reasoning
 		log.Printf("LLM Reasoning: %s\n", llmResponse.Reasoning)
 		log.Printf("LLM Strategy: %s\n", llmResponse.Strategy)
+		log.Printf("Is Fullfilled: %v\\n", a.State.Fulfilled)
 
 		// 2. Send the message to Knovvu VA
 		userMessage := llmResponse.NextMessage

@@ -11,6 +11,7 @@ type LLMProvider string
 var (
 	OpenAIProvider LLMProvider = "openai"
 	GeminiProvider LLMProvider = "gemini"
+	CohereProvider LLMProvider = "cohere"
 )
 
 var (
@@ -18,8 +19,9 @@ var (
 )
 
 var (
-	OpenAIModel = "4.1"
+	OpenAIModel = "gpt-4.1"
 	GeminiModel = "gemini-2.5-flash"
+	CohereModel = "command-a-03-2025"
 )
 
 type LLM interface {
@@ -30,7 +32,13 @@ type GeminiClient struct {
 	apiKey string
 	Model  string
 }
+
 type OpenAIClient struct {
+	apiKey string
+	Model  string
+}
+
+type CohereClient struct {
 	apiKey string
 	Model  string
 }
@@ -54,6 +62,15 @@ func NewLLMClient(provider LLMProvider, model string) (LLM, error) {
 		return &GeminiClient{
 			apiKey: apiKey,
 			Model:  GeminiModel,
+		}, nil
+	case CohereProvider:
+		apiKey := os.Getenv("COHERE_API_KEY")
+		if apiKey == "" {
+			return nil, fmt.Errorf("COHERE_API_KEY environment variable not set")
+		}
+		return &CohereClient{
+			apiKey: apiKey,
+			Model:  CohereModel,
 		}, nil
 	default:
 		return nil, fmt.Errorf("invalid provider: %s", provider)

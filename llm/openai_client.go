@@ -61,7 +61,7 @@ func (c *OpenAIClient) GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 
 	// Build request body
 	reqBody := ChatCompletionRequest{
-		Model:       "gpt-4",
+		Model:       c.Model,
 		Messages:    messages,
 		Temperature: 0,
 		MaxTokens:   1024,
