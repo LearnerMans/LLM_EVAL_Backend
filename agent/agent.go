@@ -2,13 +2,17 @@ package agent
 
 import (
 	"database/sql"
+	"errors"
 	"evaluator/knovvu"
 	"evaluator/llm"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/google/uuid"
 )
+
+var ErrInternal = errors.New("failed to send message to Knovvu")
 
 // Agent struct holds the state and configuration for a single scenario execution.
 type Agent struct {
@@ -30,6 +34,44 @@ func NewAgent(project, scenario, expectedOutcome string, initialState llm.Curren
 		LLM:             llm,
 		DB:              db,
 	}
+}
+
+// Helper function to extract quick replies from Knovvu hero card attachments
+func extractQuickRepliesFromAttachments(attachments []interface{}) string {
+	for _, att := range attachments {
+		attMap, ok := att.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if attMap["contentType"] == "application/vnd.microsoft.card.hero" {
+			content, ok := attMap["content"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			promptText, _ := content["text"].(string)
+			buttons, ok := content["buttons"].([]interface{})
+			if !ok || len(buttons) == 0 {
+				continue
+			}
+			var quickReplies []string
+			for _, btn := range buttons {
+				btnMap, ok := btn.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				title, _ := btnMap["title"].(string)
+				value, _ := btnMap["value"].(string)
+				quickReplies = append(quickReplies, "  - "+title+" (value: "+value+")")
+			}
+			result := ""
+			if promptText != "" {
+				result += "Prompt: " + promptText + "\n"
+			}
+			result += "Options:\n" + strings.Join(quickReplies, "\n")
+			return result
+		}
+	}
+	return ""
 }
 
 // Run executes the agent's main loop until the scenario is fulfilled or max turns are reached.
@@ -72,14 +114,22 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 		fmt.Printf("Sending to VA: %s\n", userMessage)
 		if userMessage != "" {
 
-			_, knovvuResp, err := knovvu.SendKnovvuMessage(a.Project, knovvuToken, userMessage, conversationID) // Replace with your project name
+			_, knovvuResp, err := knovvu.SendKnovvuMessage(a.Project, knovvuToken, userMessage, conversationID)
 			if err != nil {
-				return nil, fmt.Errorf("failed to send message to Knovvu: %w", err)
+				fmt.Printf("failed to send message to Knovvu: %v", err)
+				return nil, ErrInternal
 			}
 
 			vaResponse := "No response text found."
 			if knovvuResp != nil {
-				vaResponse = knovvuResp.Text
+				if knovvuResp.Text != "" {
+					vaResponse = knovvuResp.Text
+				} else if len(knovvuResp.Attachments) > 0 {
+					quickReplies := extractQuickRepliesFromAttachments(knovvuResp.Attachments)
+					if quickReplies != "" {
+						vaResponse = quickReplies
+					}
+				}
 			}
 			fmt.Printf("Received from VA: %s\n", vaResponse)
 			// 3. Update the history
@@ -112,4 +162,57 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 	}
 
 	return &a.State, nil
+}
+
+// ParallelRun runs up to 5 scenarios in parallel at a time, each with its expected outcome.
+func (a *Agent) ParallelRun(scenarios []string, expectedOutcomes []string) ([]*llm.CurrentState, []error) {
+	if len(scenarios) != len(expectedOutcomes) {
+		return nil, []error{fmt.Errorf("scenarios and expectedOutcomes must have the same length")}
+	}
+	type result struct {
+		idx   int
+		state *llm.CurrentState
+		err   error
+	}
+
+	maxParallel := 5
+	results := make([]*llm.CurrentState, len(scenarios))
+	errs := make([]error, len(scenarios))
+	jobs := make(chan int, len(scenarios))
+	resCh := make(chan result, len(scenarios))
+
+	// Worker function
+	worker := func() {
+		for idx := range jobs {
+			initState := llm.CurrentState{
+				History:   []llm.HistoryItem{},
+				TurnCount: 0,
+				MaxTurns:  10,
+				Fulfilled: false,
+			}
+			subAgent := NewAgent(a.Project, scenarios[idx], expectedOutcomes[idx], initState, a.LLM, a.DB)
+			state, err := subAgent.Run()
+			resCh <- result{idx: idx, state: state, err: err}
+		}
+	}
+
+	// Start workers
+	for i := 0; i < maxParallel; i++ {
+		go worker()
+	}
+
+	// Send jobs
+	for i := range scenarios {
+		jobs <- i
+	}
+	close(jobs)
+
+	// Collect results
+	for i := 0; i < len(scenarios); i++ {
+		r := <-resCh
+		results[r.idx] = r.state
+		errs[r.idx] = r.err
+	}
+
+	return results, errs
 }
