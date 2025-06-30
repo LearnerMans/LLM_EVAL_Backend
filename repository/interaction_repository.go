@@ -4,6 +4,11 @@ import (
 	"database/sql"
 )
 
+type InteractionRepo interface {
+	Create(interaction *Interaction) error
+	GetByTestRunID(testRunID int) ([]Interaction, error)
+}
+
 type Interaction struct {
 	ID                  int
 	TestRunID           int
@@ -19,7 +24,7 @@ type InteractionRepository struct {
 	db *sql.DB
 }
 
-func NewInteractionRepository(db *sql.DB) *InteractionRepository {
+func NewInteractionRepository(db *sql.DB) InteractionRepo {
 	return &InteractionRepository{db: db}
 }
 

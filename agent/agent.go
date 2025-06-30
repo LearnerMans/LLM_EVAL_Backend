@@ -5,6 +5,7 @@ import (
 	"errors"
 	"evaluator/knovvu"
 	"evaluator/llm"
+	"evaluator/repository"
 	"fmt"
 	"log"
 	"strings"
@@ -22,6 +23,7 @@ type Agent struct {
 	Project         string
 	LLM             llm.LLM
 	DB              *sql.DB
+	Store           repository.Store
 }
 
 // NewAgent creates a new agent for a given scenario.
@@ -33,6 +35,7 @@ func NewAgent(project, scenario, expectedOutcome string, initialState llm.Curren
 		Project:         project,
 		LLM:             llm,
 		DB:              db,
+		Store:           *repository.NewStore(db),
 	}
 }
 
