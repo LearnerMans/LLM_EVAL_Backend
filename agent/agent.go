@@ -141,6 +141,7 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 				User:      userMessage,
 				Assistant: vaResponse,
 			})
+
 		}
 
 		// 4. Check for fulfillment to break the loop
