@@ -11,41 +11,6 @@ import (
 	"time"
 )
 
-// LLMInput defines the structure for the input JSON to the LLM.
-type LLMInput struct {
-	Scenario        string       `json:"scenario"`
-	ExpectedOutcome string       `json:"expected_outcome"`
-	CurrentState    CurrentState `json:"current_state"`
-	Version         string       `json:"version"`
-}
-
-// CurrentState defines the current state within the LLMInput.
-type CurrentState struct {
-	History   []HistoryItem `json:"history"`
-	TurnCount int16         `json:"turn_count"`
-	MaxTurns  int16         `json:"max_turns"`
-	Fulfilled bool          `json:"fulfilled"`
-}
-
-// HistoryItem defines an item in the conversation history.
-type HistoryItem struct {
-	Turn      int16  `json:"turn"`
-	User      string `json:"user"`
-	Assistant string `json:"assistant"`
-}
-
-// LLMOutput defines the structure for the LLM's response, based on the specified schema.
-type LLMOutput struct {
-	NextMessage     string   `json:"next_message"`
-	Reasoning       string   `json:"reasoning"`
-	Fulfilled       bool     `json:"fulfilled"`
-	Confidence      string   `json:"confidence"`
-	Strategy        string   `json:"strategy"`
-	SafetyCheck     string   `json:"safety_check"`
-	ErrorLogs       []string `json:"error_logs"`
-	AdaptationNotes string   `json:"adaptation_notes"`
-}
-
 // GeminiAPIRequest represents the structure of the request body for the Gemini generateContent API.
 type GeminiAPIRequest struct {
 	Contents          []Content         `json:"contents"`
@@ -91,9 +56,9 @@ type GeminiAPIResponse struct {
 
 // GenerateContentREST interacts with the Gemini LLM via REST API to generate content based on the input.
 // It takes an LLMInput struct and returns an LLMOutput struct or an error.
-func GenerateContentREST(input LLMInput) (*LLMOutput, error) {
+func (c *GeminiClient) GenerateContentREST(prompt string, input LLMInput) (*LLMOutput, error) {
 	// Set up a context with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout)
 	defer cancel()
 
 	apiKey := os.Getenv("GEMINI_API_KEY")
@@ -112,7 +77,7 @@ func GenerateContentREST(input LLMInput) (*LLMOutput, error) {
 	userPrompt := string(inputJSONBytes)
 
 	// Define the system instruction
-	systemInstructionText := SystemPrompt
+	systemInstructionText := prompt
 
 	// Construct the request body
 	requestBody := GeminiAPIRequest{

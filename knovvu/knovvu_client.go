@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -92,17 +93,17 @@ func GetKnovvuToken() (string, error) {
 func SendKnovvuMessage(projectName, token, text, conversationID string) ([]byte, *KnovvuResponse, error) {
 	url := "https://eu.va.knovvu.com/magpie/ext-api/messages/synchronized"
 
+	text = strings.TrimSpace(text)
+
 	requestBody := KnovvuRequest{
 		Text: text,
 		Conversation: map[string]string{
 			"id": conversationID,
 		},
-		ChannelId:   "IVR",
+		ChannelId:   "ivr-default",
 		Type:        "message",
 		Attachments: []interface{}{},
-		ChannelData: map[string]interface{}{
-			"responseType": "Text",
-		},
+		ChannelData: map[string]any{"responseType": "Text"},
 	}
 
 	jsonBody, err := json.Marshal(requestBody)
@@ -119,6 +120,7 @@ func SendKnovvuMessage(projectName, token, text, conversationID string) ([]byte,
 	req.Header.Set("Project", projectName)
 	req.Header.Set("X-Knovvu-Conversation-Id", conversationID)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Tenant", "bac")
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
@@ -133,8 +135,9 @@ func SendKnovvuMessage(projectName, token, text, conversationID string) ([]byte,
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		fmt.Println("here reachedd")
 		// Attempt to parse error response for more details
-		var errorResponse map[string]interface{}
+		var errorResponse map[string]any
 		if err := json.Unmarshal(body, &errorResponse); err == nil {
 			// If we can parse the JSON response, include it in the error message
 			errorJSON, _ := json.MarshalIndent(errorResponse, "", "  ")
@@ -143,7 +146,7 @@ func SendKnovvuMessage(projectName, token, text, conversationID string) ([]byte,
 		}
 
 		// If we can't parse the JSON, just return the raw body
-		return body, nil, fmt.Errorf("received non-2xx response: %d\nResponse body: %s",
+		return body, nil, fmt.Errorf("received non-2xx none_parse response: %d\nResponse body: %s",
 			resp.StatusCode, string(body))
 	}
 

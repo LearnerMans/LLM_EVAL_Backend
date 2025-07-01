@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func InitDB() {
@@ -22,7 +22,7 @@ func InitDB() {
 		fmt.Println("Database file does not exist. It will be created.")
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
 	}
@@ -73,4 +73,18 @@ func InitDB() {
 	}
 
 	fmt.Println("Database and tables are ready!")
+}
+
+// ConnectDB establishes and returns a connection to the SQLite database.
+func ConnectDB() (*sql.DB, error) {
+	const dbPath = "./db.db"
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("error opening database: %w", err)
+	}
+	// Optionally, ping to check connection
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("error connecting to database: %w", err)
+	}
+	return db, nil
 }

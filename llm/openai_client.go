@@ -34,9 +34,9 @@ type ChatCompletionResponse struct {
 }
 
 // GenerateContentREST interacts with the OpenAI Chat API via REST to generate content.
-func GenerateContentREST_open(input LLMInput) (*LLMOutput, error) {
+func (c *OpenAIClient) GenerateContentREST(prompt string, input LLMInput) (*LLMOutput, error) {
 	// Set up a context with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), ContextTimeout)
 	defer cancel()
 
 	apiKey := os.Getenv("OPENAI_API_KEY")
@@ -53,7 +53,7 @@ func GenerateContentREST_open(input LLMInput) (*LLMOutput, error) {
 	}
 
 	// Prepare messages
-	systemPrompt := SystemPrompt // define SystemPrompt elsewhere or inline as needed
+	systemPrompt := prompt // define SystemPrompt elsewhere or inline as needed
 	messages := []ChatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: string(inputJSON)},
@@ -61,7 +61,7 @@ func GenerateContentREST_open(input LLMInput) (*LLMOutput, error) {
 
 	// Build request body
 	reqBody := ChatCompletionRequest{
-		Model:       "gpt-4",
+		Model:       c.Model,
 		Messages:    messages,
 		Temperature: 0,
 		MaxTokens:   1024,
