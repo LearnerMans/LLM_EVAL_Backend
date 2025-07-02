@@ -46,15 +46,16 @@ func InitDB() {
 		FOREIGN KEY (test_id) REFERENCES tests(id)
 	);
 
-	CREATE TABLE IF NOT EXISTS test_runs (
+		CREATE TABLE IF NOT EXISTS test_runs (
 		id INTEGER PRIMARY KEY,
 		test_id INTEGER,
 		status TEXT DEFAULT 'running',
 		started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		completed_at DATETIME,
+		verdict TEXT,
 		FOREIGN KEY (test_id) REFERENCES tests(id)
 	);
-
+	
 	CREATE TABLE IF NOT EXISTS interactions (
 		id INTEGER PRIMARY KEY,
 		test_run_id INTEGER,
