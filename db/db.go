@@ -43,13 +43,16 @@ func InitDB() {
 		test_id INTEGER,
 		description TEXT NOT NULL,
 		expected_output TEXT,
+		status TEXT DEFAULT 'Not Run',
+		started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		completed_at DATETIME,
 		FOREIGN KEY (test_id) REFERENCES tests(id)
 	);
 
 		CREATE TABLE IF NOT EXISTS test_runs (
 		id INTEGER PRIMARY KEY,
 		test_id INTEGER,
-		status TEXT DEFAULT 'running',
+		status TEXT DEFAULT 'Not Run',
 		started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		completed_at DATETIME,
 		verdict TEXT,

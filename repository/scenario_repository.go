@@ -3,13 +3,15 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 )
 
 type Scenario struct {
-	ID             int
-	TestID         int
+	ID             string
+	TestID         string
 	Description    string
 	ExpectedOutput string
+	Status         string
 }
 
 type ScenarioRepo interface {
@@ -80,12 +82,11 @@ func NewScenarioRepository(db *sql.DB) ScenarioRepo {
 
 // CreateScenario creates a new scenario for a specific test.
 func (r *ScenarioRepository) CreateScenario(testID int, description, expectedOutput string) (*Scenario, error) {
-	// Validate required fields
-	scenario := &Scenario{TestID: testID, Description: description, ExpectedOutput: expectedOutput}
+	intID := strconv.Itoa(testID)
+	scenario := &Scenario{TestID: intID, Description: description, ExpectedOutput: expectedOutput, Status: "not_run"}
 	if valid, msg := r.ValidateScenarioFormat(scenario); !valid {
 		return nil, fmt.Errorf("invalid scenario: %s", msg)
 	}
-	// Ensure test exists
 	var exists int
 	err := r.db.QueryRow("SELECT COUNT(1) FROM tests WHERE id = ?", testID).Scan(&exists)
 	if err != nil {
@@ -94,7 +95,7 @@ func (r *ScenarioRepository) CreateScenario(testID int, description, expectedOut
 	if exists == 0 {
 		return nil, fmt.Errorf("test with id %d does not exist", testID)
 	}
-	res, err := r.db.Exec("INSERT INTO scenarios (test_id, description, expected_output) VALUES (?, ?, ?)", testID, description, expectedOutput)
+	res, err := r.db.Exec("INSERT INTO scenarios (test_id, description, expected_output, status) VALUES (?, ?, ?, ?)", testID, description, expectedOutput, scenario.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -102,13 +103,13 @@ func (r *ScenarioRepository) CreateScenario(testID int, description, expectedOut
 	if err != nil {
 		return nil, err
 	}
-	scenario.ID = int(id)
+	scenario.ID = strconv.Itoa(int(id))
 	return scenario, nil
 }
 
 // GetScenariosByTestID fetches all scenarios for a test, ordered by creation.
 func (r *ScenarioRepository) GetScenariosByTestID(testID int) ([]Scenario, error) {
-	rows, err := r.db.Query("SELECT id, test_id, description, expected_output FROM scenarios WHERE test_id = ? ORDER BY id ASC", testID)
+	rows, err := r.db.Query("SELECT id, test_id, description, expected_output, status FROM scenarios WHERE test_id = ? ORDER BY id ASC", testID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +117,7 @@ func (r *ScenarioRepository) GetScenariosByTestID(testID int) ([]Scenario, error
 	var scenarios []Scenario
 	for rows.Next() {
 		var s Scenario
-		if err := rows.Scan(&s.ID, &s.TestID, &s.Description, &s.ExpectedOutput); err != nil {
+		if err := rows.Scan(&s.ID, &s.TestID, &s.Description, &s.ExpectedOutput, &s.Status); err != nil {
 			return nil, err
 		}
 		scenarios = append(scenarios, s)
@@ -127,7 +128,7 @@ func (r *ScenarioRepository) GetScenariosByTestID(testID int) ([]Scenario, error
 // GetScenarioByID retrieves a scenario by its ID.
 func (r *ScenarioRepository) GetScenarioByID(scenarioID int) (*Scenario, error) {
 	var s Scenario
-	err := r.db.QueryRow("SELECT id, test_id, description, expected_output FROM scenarios WHERE id = ?", scenarioID).Scan(&s.ID, &s.TestID, &s.Description, &s.ExpectedOutput)
+	err := r.db.QueryRow("SELECT id, test_id, description, expected_output, status FROM scenarios WHERE id = ?", scenarioID).Scan(&s.ID, &s.TestID, &s.Description, &s.ExpectedOutput, &s.Status)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
