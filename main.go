@@ -92,7 +92,7 @@ func main() {
 			if err := json.NewDecoder(r.Body).Decode(&newTest); err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+				json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 				return
 			}
 
@@ -100,7 +100,7 @@ func main() {
 			if err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+				json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 				return
 			}
 
@@ -108,12 +108,12 @@ func main() {
 			if err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+				json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 				return
 			}
 
 			// Return the full project object, including scenarios (which will be empty)
-			project := map[string]interface{}{
+			project := map[string]any{
 				"id":               createdTest.ID,
 				"title":            createdTest.Name,
 				"tenant_id":        createdTest.TenantID,
@@ -138,14 +138,14 @@ func main() {
 			return
 		}
 		defer rows.Close()
-		var projects []map[string]interface{}
+		var projects []map[string]any
 		for rows.Next() {
 			var t repo.Test
 			if err := rows.Scan(&t.ID, &t.Name, &t.TenantID, &t.ProjectID, &t.MaxInteractions, &t.CreatedAt); err != nil {
 				continue
 			}
 			scenarios, _ := scenarioRepo.GetScenariosByTestID(t.ID)
-			project := map[string]interface{}{
+			project := map[string]any{
 				"id":               t.ID,
 				"title":            t.Name,
 				"tenant_id":        t.TenantID,
@@ -175,7 +175,7 @@ func main() {
 			log.Printf("[UPLOAD-SCENARIOS] Method not allowed: %s from %s", r.Method, r.RemoteAddr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusMethodNotAllowed)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Method not allowed"})
+			json.NewEncoder(w).Encode(map[string]any{"error": "Method not allowed"})
 			return
 		}
 
@@ -192,7 +192,7 @@ func main() {
 			log.Printf("[UPLOAD-SCENARIOS] Error parsing payload from %s: %v", r.RemoteAddr, err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error from payload parsing": err.Error()})
+			json.NewEncoder(w).Encode(map[string]any{"error from payload parsing": err.Error()})
 			return
 		}
 
@@ -201,26 +201,26 @@ func main() {
 			log.Printf("[UPLOAD-SCENARIOS] Invalid test_id value from %s: %v", r.RemoteAddr, err)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "test_id must be an integer"})
+			json.NewEncoder(w).Encode(map[string]any{"error": "test_id must be an integer"})
 			return
 		}
 
 		log.Printf("[UPLOAD-SCENARIOS] Received payload from %s: %+v", r.RemoteAddr, payload)
 
-		results := make([]map[string]interface{}, 0)
+		results := make([]map[string]any, 0)
 		for _, s := range payload.Scenarios {
 			log.Printf("[UPLOAD-SCENARIOS] Creating scenario for test_id=%d: description=\"%s\"", testID, s.Description)
 			sc, err := scenarioRepo.CreateScenario(testID, s.Description, s.ExpectedOutput)
 			if err != nil {
 				log.Printf("[UPLOAD-SCENARIOS] Error creating scenario for description=\"%s\": %v", s.Description, err)
-				results = append(results, map[string]interface{}{
+				results = append(results, map[string]any{
 					"description": s.Description,
 					"success":     false,
 					"error":       err.Error(),
 				})
 			} else {
-				log.Printf("[UPLOAD-SCENARIOS] Successfully created scenario id=%d for description=\"%s\"", sc.ID, s.Description)
-				results = append(results, map[string]interface{}{
+				log.Printf("[UPLOAD-SCENARIOS] Successfully created scenario id=%s for description=\"%s\"", sc.ID, s.Description)
+				results = append(results, map[string]any{
 					"description": s.Description,
 					"success":     true,
 					"scenario_id": sc.ID,
@@ -231,7 +231,7 @@ func main() {
 		log.Printf("[UPLOAD-SCENARIOS] Sending response to %s: %+v", r.RemoteAddr, results)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
+		json.NewEncoder(w).Encode(map[string]any{"results": results})
 	})
 
 	http.HandleFunc("/api/scenarios/", func(w http.ResponseWriter, r *http.Request) {
@@ -246,7 +246,7 @@ func main() {
 
 		if r.Method != "GET" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Method not allowed"})
+			json.NewEncoder(w).Encode(map[string]any{"error": "Method not allowed"})
 			return
 		}
 
@@ -255,20 +255,20 @@ func main() {
 		testId, err := strconv.Atoi(testIdStr)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": "Invalid test ID"})
+			json.NewEncoder(w).Encode(map[string]any{"error": "Invalid test ID"})
 			return
 		}
 
 		scenarios, err := scenarioRepo.GetScenariosByTestID(testId)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{"error": err.Error()})
+			json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 			return
 		}
 
-		out := make([]map[string]interface{}, 0, len(scenarios))
+		out := make([]map[string]any, 0, len(scenarios))
 		for _, s := range scenarios {
-			out = append(out, map[string]interface{}{
+			out = append(out, map[string]any{
 				"id":              s.ID,
 				"description":     s.Description,
 				"expected_output": s.ExpectedOutput,
