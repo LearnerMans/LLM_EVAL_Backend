@@ -3,14 +3,9 @@ package main
 import (
 	"evaluator/db"
 	"evaluator/handlers" // New import
-	// "evaluator/agent" - No longer needed here
-	// "evaluator/llm" - No longer needed here
-	// repo "evaluator/repository" - No longer directly needed for routing setup here
+
 	"log"
 	"net/http"
-	// "encoding/json" - No longer needed here
-	// "strconv" - No longer needed here
-	// "strings" - No longer needed here
 
 	"github.com/joho/godotenv"
 )
@@ -52,14 +47,12 @@ func main() {
 	// ScenarioRunHandler will parse {id} and ensure "/run" suffix.
 	http.HandleFunc("/scenarios/", apiEnv.ScenarioRunHandler)
 
-
 	// --- Logging for registered routes (optional, for verification) ---
 	log.Println("Registered route: GET, POST /projects")
 	log.Println("Registered route: (various) /projects/*")
 	log.Println("Registered route: POST /api/upload-scenarios")
 	log.Println("Registered route: GET /api/scenarios/*")
 	log.Println("Registered route: POST /scenarios/*/run")
-
 
 	log.Println("API server running on :8080 ...")
 	if err := http.ListenAndServe(":8080", nil); err != nil {

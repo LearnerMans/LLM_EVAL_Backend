@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"fmt"
 )
 
 // handleRunProjectTest contains the logic for running all scenarios in a project.
@@ -54,7 +53,6 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 
-
 		llmClient, err := llm.NewLLMClient(llm.CohereProvider, llm.CohereModel) // TODO: Make provider/model configurable
 		if err != nil {
 			log.Printf("[PROJ-RUN][GOROUTINE][ERROR] Failed to create LLM client for run_id=%d: %v", currentRunID, err)
@@ -68,7 +66,7 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 			initialState := llm.CurrentState{
 				History:   []llm.HistoryItem{},
 				TurnCount: 0,
-				MaxTurns:  testProject.MaxInteractions, // Use MaxInteractions from the project
+				MaxTurns:  int16(testProject.MaxInteractions), // Use MaxInteractions from the project
 				Fulfilled: false,
 			}
 
@@ -104,7 +102,7 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 					UserMessage: h.User,
 					LLMResponse: h.Assistant,
 				}
-				_, err := env.InteractionRepo.Create(&interaction)
+				err := env.InteractionRepo.Create(&interaction)
 				if err != nil {
 					log.Printf("[PROJ-RUN][GOROUTINE][ERROR] Failed to record interaction for scenario_id=%s, run_id=%d, turn=%d: %v", sc.ID, currentRunID, h.Turn, err)
 				}
@@ -124,7 +122,6 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusAccepted) // 202 Accepted as the test runs in background
 	json.NewEncoder(w).Encode(map[string]interface{}{"run_id": runID, "status": "started"})
 }
-
 
 func (env *APIEnv) handleGetProjectTestStatus(w http.ResponseWriter, r *http.Request, projectID int) {
 	log.Printf("[PROJ-RUN][INFO] Getting test status for project_id=%d", projectID)
@@ -157,7 +154,6 @@ func (env *APIEnv) handleGetProjectTestStatus(w http.ResponseWriter, r *http.Req
 		// Potentially add more details like success/failure counts from scenarios if available
 	})
 }
-
 
 // ScenarioRunHandler manages POST /scenarios/{id}/run
 // It's intended to be registered at a path like "/scenarios/"
@@ -225,7 +221,6 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	// For a single scenario run, we might still want a TestRun entry to group interactions.
 	// The original code created a TestRun for this.
 	runID, err := env.TestRunRepo.CreateTestRun(testID, nil) // Or perhaps pass scenario details here
@@ -236,7 +231,6 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[SCENARIO-RUN] Created test run entry: run_id=%d for scenario_id=%d", runID, scenarioID)
 	env.TestRunRepo.UpdateTestRunStatus(runID, "running") // Mark this run as running
-
 
 	// Prepare and run the agent (this part is synchronous as per original code for single scenario)
 	// Using env.DB for agent
@@ -252,7 +246,7 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 	initialState := llm.CurrentState{
 		History:   []llm.HistoryItem{},
 		TurnCount: 0,
-		MaxTurns:  testProject.MaxInteractions, // Use MaxInteractions from parent Test/Project
+		MaxTurns:  int16(testProject.MaxInteractions), // Use MaxInteractions from parent Test/Project
 		Fulfilled: false,
 	}
 
@@ -289,7 +283,7 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 			UserMessage: h.User,
 			LLMResponse: h.Assistant,
 		}
-		_, err := env.InteractionRepo.Create(&interaction)
+		err := env.InteractionRepo.Create(&interaction)
 		if err != nil {
 			log.Printf("[SCENARIO-RUN][ERROR] Failed to record interaction for scenario_id=%d, run_id=%d, turn=%d: %v", scenarioID, runID, h.Turn, err)
 			// Continue, but log the error.
