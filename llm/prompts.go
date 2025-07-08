@@ -375,7 +375,7 @@ Always respond with this exact JSON structure:
 
 json
 {
-  "judgment": "pass/fail/human_review",
+  "judgment": "Pass/Fail/Human_review",
   "confidence": "high/medium/low",
   "evidence_summary": "Key evidence supporting your decision",
   "detailed_reasoning": "Comprehensive explanation of your assessment process",

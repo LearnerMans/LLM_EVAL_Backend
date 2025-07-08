@@ -119,7 +119,7 @@ type JudgeInput struct {
 }
 
 type JudgmentResult struct {
-	Judgment                 string  `json:"judgment"`
+	Judgement                string  `json:"judgment"`
 	Confidence               string  `json:"confidence"`
 	EvidenceSummary          string  `json:"evidence_summary"`
 	ScenarioCompletionScore  float64 `json:"scenario_completion_score"`

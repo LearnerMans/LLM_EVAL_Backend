@@ -75,8 +75,8 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 			// Agent expects DB connection, pass env.DB
 			testingAgent := agent.NewAgent(testProject.Name, sc.Description, sc.ExpectedOutput, initialState, llmClient, env.DB)
 
-			finalState, agentErr := testingAgent.Run()
-			currentScenarioStatus := "Pass"
+			finalState, finaljudgement, agentErr := testingAgent.Run()
+			currentScenarioStatus := finaljudgement.Judgement
 
 			if agentErr != nil {
 				log.Printf("[PROJ-RUN][GOROUTINE][ERROR] Agent run failed for scenario_id=%s, run_id=%d: %v", sc.ID, currentRunID, agentErr)
@@ -192,28 +192,24 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[SCENARIO-RUN] Initiating run for scenario_id=%d", scenarioID)
+	log.Printf("[SCENARIO-RUN] Initiating async run for scenario_id=%d", scenarioID)
 
 	// Fetch scenario details
-	// Using env.ScenarioRepo
 	scenario, err := env.ScenarioRepo.GetScenarioByID(scenarioID)
-	if err != nil || scenario == nil { // Check scenario == nil in case GetScenarioByID returns (nil, nil) on not found
+	if err != nil || scenario == nil {
 		log.Printf("[SCENARIO-RUN][ERROR] Scenario not found: id=%d, err: %v", scenarioID, err)
 		http.Error(w, "Scenario not found", http.StatusNotFound)
 		return
 	}
 	log.Printf("[SCENARIO-RUN] Fetched scenario details: id=%s, test_id=%s", scenario.ID, scenario.TestID)
 
-	// Create a test run entry
-	// Using env.TestRunRepo
-	testID, err := strconv.Atoi(scenario.TestID) // Scenario stores TestID as string, TestRun needs int
+	// Fetch project/test details to get MaxInteractions and Name
+	testID, err := strconv.Atoi(scenario.TestID)
 	if err != nil {
 		log.Printf("[SCENARIO-RUN][ERROR] Invalid test_id ('%s') associated with scenario_id=%d: %v", scenario.TestID, scenarioID, err)
 		http.Error(w, "Invalid test_id for the scenario", http.StatusInternalServerError)
 		return
 	}
-
-	// Fetch project/test details to get MaxInteractions and Name
 	testProject, err := env.TestRepo.GetTestByID(testID)
 	if err != nil {
 		log.Printf("[SCENARIO-RUN][ERROR] Could not fetch Test/Project details for test_id=%d: %v", testID, err)
@@ -221,84 +217,82 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For a single scenario run, we might still want a TestRun entry to group interactions.
-	// The original code created a TestRun for this.
-	runID, err := env.TestRunRepo.CreateTestRun(testID, nil) // Or perhaps pass scenario details here
-	if err != nil {
-		log.Printf("[SCENARIO-RUN][ERROR] Failed to create test run entry for scenario_id=%d: %v", scenarioID, err)
-		http.Error(w, "Failed to create test run entry", http.StatusInternalServerError)
-		return
-	}
-	log.Printf("[SCENARIO-RUN] Created test run entry: run_id=%d for scenario_id=%d", runID, scenarioID)
-	env.TestRunRepo.UpdateTestRunStatus(runID, "running") // Mark this run as running
-
-	// Prepare and run the agent (this part is synchronous as per original code for single scenario)
-	// Using env.DB for agent
-	llmClient, err := llm.NewLLMClient(llm.CohereProvider, llm.CohereModel) // TODO: Make provider/model configurable
-	if err != nil {
-		log.Printf("[SCENARIO-RUN][ERROR] Failed to create LLM client for scenario_id=%d: %v", scenarioID, err)
-		env.TestRunRepo.UpdateTestRunStatus(runID, "failed")
-		env.ScenarioRepo.UpdateScenario(scenarioID, map[string]interface{}{"status": "Fail"}) // Or "Error"
-		http.Error(w, "Failed to create LLM client", http.StatusInternalServerError)
+	// STEP 1: Immediately update status to "Running" in DB
+	if _, err := env.ScenarioRepo.UpdateScenario(scenarioID, map[string]interface{}{"status": "Running"}); err != nil {
+		log.Printf("[SCENARIO-RUN][ERROR] Failed to update scenario status to running for id=%d: %v", scenarioID, err)
+		http.Error(w, "Failed to start run: could not update status", http.StatusInternalServerError)
 		return
 	}
 
-	initialState := llm.CurrentState{
-		History:   []llm.HistoryItem{},
-		TurnCount: 0,
-		MaxTurns:  int16(testProject.MaxInteractions), // Use MaxInteractions from parent Test/Project
-		Fulfilled: false,
-	}
+	// STEP 2: Start the long-running process in a goroutine
+	go func(sID int, proj *repo.Test, scen *repo.Scenario) {
+		log.Printf("[SCENARIO-RUN][GOROUTINE] Starting agent for scenario_id=%d", sID)
 
-	// Agent expects DB connection, pass env.DB
-	testingAgent := agent.NewAgent(testProject.Name, scenario.Description, scenario.ExpectedOutput, initialState, llmClient, env.DB)
-
-	finalState, agentErr := testingAgent.Run()
-	runStatus := "completed"
-	scenarioStatus := "Pass"
-
-	if agentErr != nil {
-		log.Printf("[SCENARIO-RUN][ERROR] Agent run failed for scenario_id=%d, run_id=%d: %v", scenarioID, runID, agentErr)
-		runStatus = "failed"
-		scenarioStatus = "Fail" // Or "Error"
-	} else if !finalState.Fulfilled {
-		log.Printf("[SCENARIO-RUN][INFO] Agent run completed but not fulfilled for scenario_id=%d, run_id=%d. Turns: %d", scenarioID, runID, finalState.TurnCount)
-		// runStatus remains "completed" but scenario is "Fail"
-		scenarioStatus = "Fail"
-	} else {
-		log.Printf("[SCENARIO-RUN][INFO] Agent run successful for scenario_id=%d, run_id=%d. Fulfilled: %v, Turns: %d", scenarioID, runID, finalState.Fulfilled, finalState.TurnCount)
-	}
-
-	// Update TestRun and Scenario status
-	env.TestRunRepo.UpdateTestRunStatus(runID, runStatus)
-	env.ScenarioRepo.UpdateScenario(scenarioID, map[string]interface{}{"status": scenarioStatus})
-
-	// Record interactions
-	// Using env.InteractionRepo
-	for _, h := range finalState.History {
-		interaction := repo.Interaction{
-			TestRunID:   runID,
-			ScenarioID:  scenarioID, // scenarioID is already int
-			TurnNumber:  int(h.Turn),
-			UserMessage: h.User,
-			LLMResponse: h.Assistant,
-		}
-		err := env.InteractionRepo.Create(&interaction)
+		runID, err := env.TestRunRepo.CreateTestRun(proj.ID, nil)
 		if err != nil {
-			log.Printf("[SCENARIO-RUN][ERROR] Failed to record interaction for scenario_id=%d, run_id=%d, turn=%d: %v", scenarioID, runID, h.Turn, err)
-			// Continue, but log the error.
+			log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to create test run entry for scenario_id=%d: %v", sID, err)
+			if _, err := env.ScenarioRepo.UpdateScenario(sID, map[string]interface{}{"status": "Fail"}); err != nil {
+				log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to update scenario status to Fail for scenario_id=%d: %v", sID, err)
+			}
+			return
 		}
-	}
+		env.TestRunRepo.UpdateTestRunStatus(runID, "running")
 
-	log.Printf("[SCENARIO-RUN] Results recorded in DB for scenario_id=%d, run_id=%d", scenarioID, runID)
+		llmClient, err := llm.NewLLMClient(llm.CohereProvider, llm.CohereModel)
+		if err != nil {
+			log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to create LLM client for scenario_id=%d: %v", sID, err)
+			env.TestRunRepo.UpdateTestRunStatus(runID, "failed")
+			if _, err := env.ScenarioRepo.UpdateScenario(sID, map[string]interface{}{"status": "Fail"}); err != nil {
+				log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to update scenario status to Fail for scenario_id=%d: %v", sID, err)
+			}
+			return
+		}
+
+		initialState := llm.CurrentState{
+			History:   []llm.HistoryItem{},
+			TurnCount: 0,
+			MaxTurns:  int16(proj.MaxInteractions),
+			Fulfilled: false,
+		}
+		testingAgent := agent.NewAgent(proj.Name, scen.Description, scen.ExpectedOutput, initialState, llmClient, env.DB)
+		finalState, finalJudgement, agentErr := testingAgent.Run()
+
+		runStatus := "completed"
+		scenarioStatus := finalJudgement.Judgement
+		if agentErr != nil || !finalState.Fulfilled {
+			runStatus = "failed"
+			if agentErr != nil {
+				scenarioStatus = "Fail"
+			}
+		}
+
+		env.TestRunRepo.UpdateTestRunStatus(runID, runStatus)
+		if _, err := env.ScenarioRepo.UpdateScenario(sID, map[string]interface{}{"status": scenarioStatus}); err != nil {
+			log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to update scenario status to %s for scenario_id=%d: %v", scenarioStatus, sID, err)
+		}
+
+		for _, h := range finalState.History {
+			interaction := repo.Interaction{
+				TestRunID:   runID,
+				ScenarioID:  sID,
+				TurnNumber:  int(h.Turn),
+				UserMessage: h.User,
+				LLMResponse: h.Assistant,
+			}
+			err := env.InteractionRepo.Create(&interaction)
+			if err != nil {
+				log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to record interaction for scenario_id=%d, run_id=%d, turn=%d: %v", sID, runID, h.Turn, err)
+			}
+		}
+
+		log.Printf("[SCENARIO-RUN][GOROUTINE] Run finished for scenario_id=%d. Final status: %s", sID, scenarioStatus)
+	}(scenarioID, testProject, scenario)
+
+	// STEP 3: Immediately respond to the frontend
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK) // 200 OK as operation is complete
+	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"run_id":      runID,
+		"message":     "Scenario run initiated successfully",
 		"scenario_id": scenarioID,
-		"status":      scenarioStatus, // Return the scenario's final status
-		"turns":       finalState.TurnCount,
-		"fulfilled":   finalState.Fulfilled,
-		"history":     finalState.History, // Optionally return history
 	})
 }

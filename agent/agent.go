@@ -78,12 +78,12 @@ func extractQuickRepliesFromAttachments(attachments []interface{}) string {
 }
 
 // Run executes the agent's main loop until the scenario is fulfilled or max turns are reached.
-func (a *Agent) Run() (*llm.CurrentState, error) {
+func (a *Agent) Run() (*llm.CurrentState, *llm.JudgmentResult, error) {
 	fmt.Printf("--- Starting Scenario: %s ---\n", a.Scenario)
 
 	knovvuToken, err := knovvu.GetKnovvuToken()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get Knovvu token: %w", err)
+		return nil, nil, fmt.Errorf("failed to get Knovvu token: %w", err)
 	}
 	conversationID := uuid.New().String()
 
@@ -101,7 +101,7 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 
 		llmResponse, err := a.LLM.GenerateContentREST(llm.SystemPrompt, llmInput)
 		if err != nil {
-			return nil, fmt.Errorf("failed to generate content from LLM: %w", err)
+			return nil, nil, fmt.Errorf("failed to generate content from LLM: %w", err)
 		}
 
 		// Update agent's fulfilled status from LLM response
@@ -120,7 +120,7 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 			_, knovvuResp, err := knovvu.SendKnovvuMessage(a.Project, knovvuToken, userMessage, conversationID)
 			if err != nil {
 				fmt.Printf("failed to send message to Knovvu: %v", err)
-				return nil, ErrInternal
+				return nil, nil, ErrInternal
 			}
 
 			vaResponse := "No response text found."
@@ -153,10 +153,10 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 	judgeInput := llm.JudgeInput{Scenario: a.Scenario, Conversation: a.State.History}
 	judgeReslts, err := a.LLM.GenerateJudgmentREST(llm.JudgePrompt, judgeInput)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate Judgement Results from LLM: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate Judgement Results from LLM: %w", err)
 	}
 
-	fmt.Printf("Judgement is %s\n", judgeReslts.Judgment)
+	fmt.Printf("Judgement is %s\n", judgeReslts.Judgement)
 	fmt.Printf("Confidence is %s\n", judgeReslts.Confidence)
 	fmt.Printf("Scenario Completion Score is %v\n", judgeReslts.ScenarioCompletionScore)
 	fmt.Printf("Conversation Quality Score is %v\n", judgeReslts.ConversationQualityScore)
@@ -165,7 +165,7 @@ func (a *Agent) Run() (*llm.CurrentState, error) {
 		fmt.Println("\n--- Max turns reached ---")
 	}
 
-	return &a.State, nil
+	return &a.State, judgeReslts, nil
 }
 
 // ParallelRun runs up to 5 scenarios in parallel at a time, each with its expected outcome.
@@ -195,7 +195,8 @@ func (a *Agent) ParallelRun(scenarios []string, expectedOutcomes []string) ([]*l
 				Fulfilled: false,
 			}
 			subAgent := NewAgent(a.Project, scenarios[idx], expectedOutcomes[idx], initState, a.LLM, a.DB)
-			state, err := subAgent.Run()
+			//TODO: add judgment result to the state
+			state, _, err := subAgent.Run()
 			resCh <- result{idx: idx, state: state, err: err}
 		}
 	}
