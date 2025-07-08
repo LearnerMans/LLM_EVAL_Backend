@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 type Test struct {
@@ -83,8 +84,8 @@ func (r *TestRepository) GetTestByID(testID int) (*Test, error) {
 }
 
 func (r *TestRepository) DeleteTest(testID int) error {
-	// TODO: Implement delete test logic
-	return nil
+	_, err := r.db.Exec("DELETE FROM tests WHERE id = ?", testID)
+	return err
 }
 
 func (r *TestRepository) GetTestsByProject(tenantID, projectID string) ([]Test, error) {
@@ -108,6 +109,17 @@ func (r *TestRepository) SearchTests(criteria map[string]interface{}) ([]Test, e
 }
 
 func (r *TestRepository) UpdateTest(testID int, updates map[string]interface{}) error {
-	// TODO: Implement update test logic
-	return nil
+	if len(updates) == 0 {
+		return nil
+	}
+	setClauses := []string{}
+	args := []interface{}{}
+	for k, v := range updates {
+		setClauses = append(setClauses, k+" = ?")
+		args = append(args, v)
+	}
+	args = append(args, testID)
+	query := "UPDATE tests SET " + strings.Join(setClauses, ", ") + " WHERE id = ?"
+	_, err := r.db.Exec(query, args...)
+	return err
 }

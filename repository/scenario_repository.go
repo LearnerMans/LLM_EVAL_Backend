@@ -153,10 +153,13 @@ func (r *ScenarioRepository) UpdateScenario(scenarioID int, updates map[string]i
 	if eo, ok := updates["expected_output"].(string); ok {
 		s.ExpectedOutput = eo
 	}
+	if status, ok := updates["status"].(string); ok {
+		s.Status = status
+	}
 	if valid, msg := r.ValidateScenarioFormat(s); !valid {
 		return nil, fmt.Errorf("invalid scenario: %s", msg)
 	}
-	_, err = r.db.Exec("UPDATE scenarios SET description = ?, expected_output = ? WHERE id = ?", s.Description, s.ExpectedOutput, scenarioID)
+	_, err = r.db.Exec("UPDATE scenarios SET description = ?, expected_output = ?, status = ? WHERE id = ?", s.Description, s.ExpectedOutput, s.Status, scenarioID)
 	if err != nil {
 		return nil, err
 	}
