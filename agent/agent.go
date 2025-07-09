@@ -78,6 +78,7 @@ func extractQuickRepliesFromAttachments(attachments []interface{}) string {
 }
 
 // Run executes the agent's main loop until the scenario is fulfilled or max turns are reached.
+// If an error occurs, it is returned and should be handled by the caller (never causes server exit).
 func (a *Agent) Run() (*llm.CurrentState, *llm.JudgmentResult, error) {
 	fmt.Printf("--- Starting Scenario: %s ---\n", a.Scenario)
 

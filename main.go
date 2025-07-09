@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 
+	"strings"
+
 	"github.com/joho/godotenv"
 )
 
@@ -45,7 +47,16 @@ func main() {
 
 	// Handle /scenarios/{id}/run
 	// ScenarioRunHandler will parse {id} and ensure "/run" suffix.
-	http.HandleFunc("/scenarios/", apiEnv.ScenarioRunHandler)
+	http.HandleFunc("/scenarios/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/run") {
+			apiEnv.ScenarioRunHandler(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/stop") {
+			apiEnv.StopScenarioHandler(w, r)
+		} else {
+			// fallback for other /scenarios/ endpoints
+			http.NotFound(w, r)
+		}
+	})
 
 	// --- Logging for registered routes (optional, for verification) ---
 	log.Println("Registered route: GET, POST /projects")

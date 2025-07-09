@@ -80,8 +80,7 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 
 			if agentErr != nil {
 				log.Printf("[PROJ-RUN][GOROUTINE][ERROR] Agent run failed for scenario_id=%s, run_id=%d: %v", sc.ID, currentRunID, agentErr)
-				currentScenarioStatus = "Fail" // Or "Error"
-				overallSuccess = false
+				currentScenarioStatus = "Error"
 			} else if !finalState.Fulfilled {
 				log.Printf("[PROJ-RUN][GOROUTINE][INFO] Agent run completed but not fulfilled for scenario_id=%s, run_id=%d. Turns: %d", sc.ID, currentRunID, finalState.TurnCount)
 				currentScenarioStatus = "Fail"

@@ -58,7 +58,6 @@ func (env *APIEnv) UploadScenariosHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-
 	log.Printf("[UPLOAD-SCENARIOS] Received payload for test_id=%d from %s: %d scenarios", testID, r.RemoteAddr, len(payload.Scenarios))
 
 	results := make([]map[string]any, 0)
@@ -113,7 +112,6 @@ func (env *APIEnv) GetScenariosByTestIDHandler(w http.ResponseWriter, r *http.Re
 	testIdStr := strings.TrimPrefix(r.URL.Path, prefix)
 	testIdStr = strings.TrimSuffix(testIdStr, "/")
 
-
 	if testIdStr == "" {
 		log.Printf("[GET-SCENARIOS] Missing test_id in path: %s", r.URL.Path)
 		http.Error(w, "Missing test_id in path", http.StatusBadRequest)
@@ -156,4 +154,49 @@ func (env *APIEnv) GetScenariosByTestIDHandler(w http.ResponseWriter, r *http.Re
 	log.Printf("[GET-SCENARIOS] Successfully fetched %d scenarios for test_id=%d", len(out), testID)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
+}
+
+// StopScenarioHandler handles POST /scenarios/{id}/stop
+func (env *APIEnv) StopScenarioHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Path expected /scenarios/{id}/stop
+	path := r.URL.Path
+	parts := strings.Split(strings.TrimPrefix(path, "/scenarios/"), "/")
+	if len(parts) < 2 || parts[1] != "stop" {
+		http.Error(w, "Malformed request path for scenario stop", http.StatusBadRequest)
+		return
+	}
+	scenarioIDStr := parts[0]
+	scenarioID, err := strconv.Atoi(scenarioIDStr)
+	if err != nil {
+		http.Error(w, "Invalid scenario ID format", http.StatusBadRequest)
+		return
+	}
+
+	_, err = env.ScenarioRepo.UpdateScenario(scenarioID, map[string]interface{}{"status": "Error"})
+	if err != nil {
+		log.Printf("[SCENARIO-STOP][ERROR] Failed to update scenario status to Error for id=%d: %v", scenarioID, err)
+		http.Error(w, "Failed to update scenario status", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"scenario_id": scenarioID,
+		"status":      "Error",
+		"message":     "Scenario stopped and marked as Error",
+	})
 }
