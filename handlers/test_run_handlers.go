@@ -36,7 +36,9 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 				scenarios, err := env.ScenarioRepo.GetScenariosByTestID(currentProjectID)
 				if err == nil {
 					for _, sc := range scenarios {
-						env.ScenarioRepo.UpdateScenario(sc.ID, map[string]interface{}{"status": "Error"})
+						if idInt, err := strconv.Atoi(sc.ID); err == nil {
+							env.ScenarioRepo.UpdateScenario(idInt, map[string]interface{}{"status": "Error"})
+						}
 					}
 				}
 				env.TestRunRepo.UpdateTestRunStatus(currentRunID, "failed", nil, nil)
@@ -102,20 +104,24 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 			}
 
 			// Update individual scenario status
-			env.ScenarioRepo.UpdateScenario(sc.ID, map[string]interface{}{"status": currentScenarioStatus})
+			if idInt, err := strconv.Atoi(sc.ID); err == nil {
+				env.ScenarioRepo.UpdateScenario(idInt, map[string]interface{}{"status": currentScenarioStatus})
+			}
 
 			// Record interactions for this scenario
 			for _, h := range finalState.History {
-				interaction := repo.Interaction{
-					TestRunID:   currentRunID,
-					ScenarioID:  sc.ID,
-					TurnNumber:  int(h.Turn),
-					UserMessage: h.User,
-					LLMResponse: h.Assistant,
-				}
-				err := env.InteractionRepo.Create(&interaction)
-				if err != nil {
-					log.Printf("[PROJ-RUN][GOROUTINE][ERROR] Failed to record interaction for scenario_id=%d, run_id=%d, turn=%d: %v", sc.ID, currentRunID, h.Turn, err)
+				if idInt, err := strconv.Atoi(sc.ID); err == nil {
+					interaction := repo.Interaction{
+						TestRunID:   currentRunID,
+						ScenarioID:  idInt,
+						TurnNumber:  int(h.Turn),
+						UserMessage: h.User,
+						LLMResponse: h.Assistant,
+					}
+					err := env.InteractionRepo.Create(&interaction)
+					if err != nil {
+						log.Printf("[PROJ-RUN][GOROUTINE][ERROR] Failed to record interaction for scenario_id=%d, run_id=%d, turn=%d: %v", sc.ID, currentRunID, h.Turn, err)
+					}
 				}
 			}
 		}
@@ -287,7 +293,13 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[SCENARIO-RUN] Fetched scenario details: id=%s, test_id=%s", scenario.ID, scenario.TestID)
 
 	// Fetch project/test details to get MaxInteractions and Name
-	testProject, err := env.TestRepo.GetTestByID(scenario.TestID)
+	testIDInt, err := strconv.Atoi(scenario.TestID)
+	if err != nil {
+		log.Printf("[SCENARIO-RUN][ERROR] Invalid TestID '%s': %v", scenario.TestID, err)
+		http.Error(w, "Invalid TestID format", http.StatusInternalServerError)
+		return
+	}
+	testProject, err := env.TestRepo.GetTestByID(testIDInt)
 	if err != nil {
 		log.Printf("[SCENARIO-RUN][ERROR] Could not fetch Test/Project details for test_id=%d: %v", scenario.TestID, err)
 		http.Error(w, "Failed to fetch project details for scenario run", http.StatusInternalServerError)

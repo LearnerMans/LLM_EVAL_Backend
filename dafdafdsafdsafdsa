@@ -1,0 +1,197 @@
+[33mcommit 4cfae4fbb3ae9764225fb81baa8ef67b5c98c248[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Fri Jul 11 16:36:35 2025 +0300
+
+    fixed test runs
+
+[33mcommit 84e16b793ac0ffc1aba8dde194b7d0adf07c1b8d[m
+Merge: 700af70 deda2e4
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Fri Jul 11 16:31:51 2025 +0300
+
+    gerge branch 'main' of https://github.com/LearnerMans/LLM_EVAL_Backend
+
+[33mcommit deda2e4db7449b3e508370e3821af67c203b42e3[m
+Merge: cc6e7a9 8b6e4fd
+Author: Abdullah Alzariqi <abdullahsestek@gmail.com>
+Date:   Fri Jul 11 16:30:38 2025 +0300
+
+    Merge pull request #9 from LearnerMans/feature/scenario-crud-api
+    
+    feat: Implement Scenario CRUD API Endpoints
+
+[33mcommit 8b6e4fdaae118e8021ed10de410515f04c1da479[m
+Author: google-labs-jules[bot] <161369871+google-labs-jules[bot]@users.noreply.github.com>
+Date:   Fri Jul 11 13:30:04 2025 +0000
+
+    feat: Implement Scenario CRUD API Endpoints
+    
+    I've implemented full CRUD (Create, Read, Update, Delete) API endpoints for managing individual scenarios in your code.
+    
+    Key changes:
+    
+    -   **Repository (`repository/scenario_repository.go`):**
+        -   I modified the `Scenario` struct to use `int` for `ID` and `TestID` for database alignment and type safety.
+        -   I updated existing methods (`CreateScenario`, `GetScenarioByID`, `GetScenariosByTestID`, `UpdateScenario`, `DeleteScenario`) to reflect `int` IDs and added more robust error handling and logging.
+        -   I implemented a basic version of `GetScenariosByStatus`.
+    
+    -   **Handlers (`handlers/scenario_handlers.go`):**
+        -   I added new handler functions:
+            -   `CreateScenarioHandler` (POST /api/tests/{test_id}/scenarios)
+            -   `GetScenarioHandler` (GET /api/scenarios/{scenario_id})
+            -   `UpdateScenarioHandler` (PUT /api/scenarios/{scenario_id})
+            -   `DeleteScenarioHandler` (DELETE /api/scenarios/{scenario_id})
+        -   I modified `GetScenariosByTestIDHandler` to use the new path structure (GET /api/tests/{test_id}/scenarios) and align with repository changes.
+        -   I updated `UploadScenariosHandler` and `StopScenarioHandler` for consistency and to reflect repository changes.
+        -   I introduced helper functions (`writeJSONResponse`, `writeErrorResponse`) for standardized JSON responses and error handling.
+        -   I added CORS preflight (OPTIONS) and header handling to all relevant scenario handlers.
+    
+    -   **Main (`main.go`):**
+        -   I registered the new routes for scenario management.
+        -   I adjusted routing logic to dispatch requests to the correct new and updated handlers, including a new dispatcher for paths under `/api/tests/`.
+        -   I updated logging for registered routes.
+    
+    This provides a comprehensive API for managing scenarios individually, complementing the existing bulk upload functionality in your codebase.
+
+[33mcommit 700af70213a4cf8245d69c67d8486092f32d7f97[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Fri Jul 11 15:21:32 2025 +0300
+
+    Interaction display is done
+
+[33mcommit cc6e7a9b1bbbcdd43e2eef9e38ce9865740eccbc[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Fri Jul 11 14:57:55 2025 +0300
+
+    interaction handlers adn endpoints added
+
+[33mcommit c60e3f066c3f95159582ee317b909ac6fba42f9a[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Wed Jul 9 13:46:53 2025 +0300
+
+    fix errors
+
+[33mcommit e0fdc9b03f804eb657d9a826babf945c66470df0[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Tue Jul 8 14:08:01 2025 +0300
+
+    Fixed status updates and status relay
+
+[33mcommit 87cd857229ec7620f47c9a53a8805e86ecd04569[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Tue Jul 8 09:37:10 2025 +0300
+
+    fixed repo initiation in handlers
+
+[33mcommit 66247684c3bd127e244d986d65a99fbdae541549[m
+Merge: 9e53904 cfc4fc1
+Author: Abdullah Alzariqi <abdullahsestek@gmail.com>
+Date:   Tue Jul 8 09:11:16 2025 +0300
+
+    Merge pull request #8 from LearnerMans/refactor/main-go-handlers
+    
+    Refactor main.go and organize HTTP handlers
+
+[33mcommit cfc4fc1e83381fcd646da861e8a5830a6235a127[m
+Author: google-labs-jules[bot] <161369871+google-labs-jules[bot]@users.noreply.github.com>
+Date:   Tue Jul 8 06:09:46 2025 +0000
+
+    Refactor main.go and organize HTTP handlers
+    
+    - Extracted HTTP handler logic from main.go into a new 'handlers' package.
+    - Introduced an APIEnv struct for dependency injection (DB, repositories) into handlers.
+    - main.go is now cleaner, focusing on setup and route registration.
+    - Created specific handler files: project_handlers.go, scenario_handlers.go, test_run_handlers.go.
+    - Implemented ProjectDispatchHandler to manage sub-routes under /projects/.
+    - Removed redundant database connections and unused code.
+    - Ensured consistent use of the APIEnv for accessing shared resources.
+
+[33mcommit 9e539043a0d021dccfbae978c514da57d3cda03d[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Tue Jul 8 09:03:31 2025 +0300
+
+    project by id and not by name
+
+[33mcommit 803997b24743963a29a65172b89faa837531c0c8[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Thu Jul 3 15:03:11 2025 +0300
+
+    scenarios
+
+[33mcommit eb7a205a419a265728cbea6225aff8ff38b0021b[m
+Merge: dd18cfb 277f068
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Thu Jul 3 14:59:14 2025 +0300
+
+    Merge branch 'main' of https://github.com/LearnerMans/LLM_EVAL_BackMerge
+    scenariosend
+
+[33mcommit dd18cfb0ab1d99eb29e48a38e9bcf5dd486f2861[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Thu Jul 3 14:57:41 2025 +0300
+
+    scenarios served
+
+[33mcommit 0bd6a71229c06cfb881e9878688d83f09b075a14[m
+Merge: 9194687 a74a523
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Wed Jul 2 09:33:37 2025 +0300
+
+    touch ups and db changes
+
+[33mcommit 277f068be70256f7522466c3afdda0f105b5839a[m
+Merge: 9194687 a74a523
+Author: Abdullah Alzariqi <abdullahsestek@gmail.com>
+Date:   Wed Jul 2 09:31:14 2025 +0300
+
+    Merge pull request #7 from LearnerMans/db_integration
+    
+    Db and frontend touch ups
+
+[33mcommit a74a523a879bb10f727536df257907bb2d7029dd[m[33m ([m[1;31morigin/db_integration[m[33m, [m[1;32mdb_integration[m[33m)[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Wed Jul 2 09:26:38 2025 +0300
+
+    Db and frontend touch ups
+
+[33mcommit 91946874962adb90c257bf5d935929d8ee6c8dd0[m
+Merge: 88dd848 b0ab563
+Author: Abdullah Alzariqi <abdullahsestek@gmail.com>
+Date:   Wed Jul 2 09:12:41 2025 +0300
+
+    Merge pull request #6 from LearnerMans/update-readme
+    
+    Update README.md to reflect current codebase
+
+[33mcommit b0ab5638e7860f0267f48e124d0d83b7d2dd73ce[m
+Author: google-labs-jules[bot] <161369871+google-labs-jules[bot]@users.noreply.github.com>
+Date:   Wed Jul 2 06:12:18 2025 +0000
+
+    Update README.md to reflect current codebase
+    
+    - Updated LLM descriptions to include Cohere, Gemini, and OpenAI.
+    - Revised setup instructions for API keys.
+    - Updated examples for running the application and customizing scenarios.
+    - Documented new features: parallel execution, repository pattern for DB, and post-conversation judgment.
+    - Added reference to dependencies.md.
+    - Ensured overall accuracy with the current project state.
+
+[33mcommit 88dd8483c2a5158fd954ca2cedd4ce3fc878ed82[m
+Merge: b86ff1a 9ef9acf
+Author: Abdullah Alzariqi <abdullahsestek@gmail.com>
+Date:   Tue Jul 1 16:06:42 2025 +0300
+
+    Merge pull request #5 from LearnerMans/db_integration
+    
+    Db integration
+
+[33mcommit 9ef9acff4f19ecbb86181893a874aee65ab92f7d[m
+Merge: 4b7f35a b86ff1a
+Author: Abdullah Alzariqi <abdullahsestek@gmail.com>
+Date:   Tue Jul 1 16:06:32 2025 +0300
+
+    Merge branch 'main' into db_integration
+
+[33mcommit 4b7f35a740d1b1275e5c364439d062865910f366[m
+Author: Abdullah Alzariqi <abdullah.alzariqi@sestek.com>
+Date:   Mon Jun 30 10:50:
