@@ -50,7 +50,6 @@ func (env *APIEnv) ProjectDispatchHandler(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("Access-Control-Allow-Methods", "PUT, DELETE, POST, GET, OPTIONS")
 
-
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -90,6 +89,7 @@ func (env *APIEnv) ProjectDispatchHandler(w http.ResponseWriter, r *http.Request
 				http.Error(w, "Method not allowed for run-test, expected POST", http.StatusMethodNotAllowed)
 				return
 			}
+			//TODO SCENARIO ID
 			env.handleRunProjectTest(w, r, projectID) // from test_run_handlers.go (needs to be accessible or logic moved)
 			return
 		case "test-status":
@@ -122,7 +122,6 @@ func (env *APIEnv) ProjectDispatchHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 }
-
 
 // --- Helper methods (previously part of a combined handler or separate item handler) ---
 

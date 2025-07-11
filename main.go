@@ -34,6 +34,7 @@ func main() {
 	// Handle base /projects path (GET for list, POST for create)
 	http.HandleFunc("/projects", apiEnv.ListCreateProjectsHandler)
 
+	//todo
 	// Handle paths under /projects/ (e.g., /projects/{id}, /projects/{id}/run-test)
 	// ProjectDispatchHandler will internally route to the correct logic based on path.
 	http.HandleFunc("/projects/", apiEnv.ProjectDispatchHandler)
@@ -52,11 +53,17 @@ func main() {
 			apiEnv.ScenarioRunHandler(w, r)
 		} else if strings.HasSuffix(r.URL.Path, "/stop") {
 			apiEnv.StopScenarioHandler(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/runs") && r.Method == "GET" {
+			apiEnv.GetTestRunsByScenarioHandler(w, r)
 		} else {
 			// fallback for other /scenarios/ endpoints
 			http.NotFound(w, r)
 		}
 	})
+
+	// Handle /api/interactions/{testRunID} (GET) and /api/interactions (POST)
+	http.HandleFunc("/api/interactions/", apiEnv.ListInteractionsByTestRunHandler)
+	http.HandleFunc("/api/interactions", apiEnv.CreateInteractionHandler)
 
 	// --- Logging for registered routes (optional, for verification) ---
 	log.Println("Registered route: GET, POST /projects")

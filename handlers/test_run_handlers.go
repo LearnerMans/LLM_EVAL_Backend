@@ -19,6 +19,7 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 	log.Printf("[PROJ-RUN][HELPER] Test run initiated for project_id=%d", projectID)
 
 	// Using env.TestRunRepo now
+	//TODO Project ID must by scenario ID
 	runID, err := env.TestRunRepo.CreateTestRun(projectID, nil) // Assuming nil is acceptable for ScenariosJson initially
 	if err != nil {
 		log.Printf("[PROJ-RUN][BACKEND][ERROR] Failed to create test run entry for project_id=%d: %v", projectID, err)
@@ -28,35 +29,49 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 	log.Printf("[PROJ-RUN][BACKEND] Test run entry created: project_id=%d, run_id=%d. Starting background process.", projectID, runID)
 
 	go func(currentProjectID, currentRunID int) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[PROJ-RUN][GOROUTINE][PANIC] Recovered from panic: %v", r)
+				// Mark all scenarios in this run as Error
+				scenarios, err := env.ScenarioRepo.GetScenariosByTestID(currentProjectID)
+				if err == nil {
+					for _, sc := range scenarios {
+						scenarioIDInt, _ := strconv.Atoi(sc.ID)
+						env.ScenarioRepo.UpdateScenario(scenarioIDInt, map[string]interface{}{"status": "Error"})
+					}
+				}
+				env.TestRunRepo.UpdateTestRunStatus(currentRunID, "failed", nil, nil)
+			}
+		}()
 		log.Printf("[PROJ-RUN][GOROUTINE] Running test in background: project_id=%d, run_id=%d", currentProjectID, currentRunID)
-		env.TestRunRepo.UpdateTestRunStatus(currentRunID, "running")
+		env.TestRunRepo.UpdateTestRunStatus(currentRunID, "running", nil, nil)
 
 		// --- Full Agent Logic for all scenarios in a project ---
 		scenarios, err := env.ScenarioRepo.GetScenariosByTestID(currentProjectID)
 		if err != nil {
 			log.Printf("[PROJ-RUN][GOROUTINE][ERROR] Failed to fetch scenarios for project_id=%d, run_id=%d: %v", currentProjectID, currentRunID, err)
-			env.TestRunRepo.UpdateTestRunStatus(currentRunID, "failed")
+			env.TestRunRepo.UpdateTestRunStatus(currentRunID, "Error", nil, nil)
 			// Potentially update individual scenarios to "Error" or "Skipped"
 			return
 		}
 
 		if len(scenarios) == 0 {
 			log.Printf("[PROJ-RUN][GOROUTINE][WARN] No scenarios found for project_id=%d, run_id=%d. Marking as completed.", currentProjectID, currentRunID)
-			env.TestRunRepo.UpdateTestRunStatus(currentRunID, "completed") // Or a different status like "no_scenarios"
+			env.TestRunRepo.UpdateTestRunStatus(currentRunID, "Error", nil, nil) // Or a different status like "no_scenarios"
 			return
 		}
 
 		testProject, err := env.TestRepo.GetTestByID(currentProjectID)
 		if err != nil {
 			log.Printf("[PROJ-RUN][GOROUTINE][ERROR] Failed to fetch test/project details for project_id=%d: %v", currentProjectID, err)
-			env.TestRunRepo.UpdateTestRunStatus(currentRunID, "failed")
+			env.TestRunRepo.UpdateTestRunStatus(currentRunID, "Error", nil, nil)
 			return
 		}
 
 		llmClient, err := llm.NewLLMClient(llm.CohereProvider, llm.CohereModel) // TODO: Make provider/model configurable
 		if err != nil {
 			log.Printf("[PROJ-RUN][GOROUTINE][ERROR] Failed to create LLM client for run_id=%d: %v", currentRunID, err)
-			env.TestRunRepo.UpdateTestRunStatus(currentRunID, "failed")
+			env.TestRunRepo.UpdateTestRunStatus(currentRunID, "Error", nil, nil)
 			return
 		}
 
@@ -112,7 +127,7 @@ func (env *APIEnv) handleRunProjectTest(w http.ResponseWriter, r *http.Request, 
 		if !overallSuccess {
 			// finalStatus = "completed_with_failures" // Or keep "completed" and rely on scenario statuses
 		}
-		env.TestRunRepo.UpdateTestRunStatus(currentRunID, finalStatus)
+		env.TestRunRepo.UpdateTestRunStatus(currentRunID, finalStatus, nil, nil)
 		log.Printf("[PROJ-RUN][GOROUTINE] Test run completed: project_id=%d, run_id=%d. Overall success: %t", currentProjectID, currentRunID, overallSuccess)
 
 	}(projectID, runID) // Pass current projectID and newly created runID
@@ -152,6 +167,78 @@ func (env *APIEnv) handleGetProjectTestStatus(w http.ResponseWriter, r *http.Req
 		"completed_at": run.CompletedAt,
 		// Potentially add more details like success/failure counts from scenarios if available
 	})
+}
+
+// GetTestRunsByScenarioHandler handles GET /scenarios/{scenarioID}/runs
+// Example route: /scenarios/123/runs?limit=10&offset=0
+func (env *APIEnv) GetTestRunsByScenarioHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "GET" {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		http.Error(w, "Method Not Allowed, expected GET", http.StatusMethodNotAllowed)
+		return
+	}
+
+	path := r.URL.Path
+	// Expected path: /scenarios/{scenarioID}/runs
+	parts := strings.Split(strings.TrimPrefix(path, "/scenarios/"), "/")
+	if len(parts) < 2 || parts[1] != "runs" {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		http.Error(w, "Malformed request path for scenario runs", http.StatusBadRequest)
+		return
+	}
+
+	scenarioIDStr := parts[0]
+	scenarioID, err := strconv.Atoi(scenarioIDStr)
+	if err != nil {
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		http.Error(w, "Invalid scenario ID format", http.StatusBadRequest)
+		return
+	}
+
+	// Parse limit/offset from query params (default: limit=10, offset=0)
+	limit := 10
+	offset := 0
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil {
+			limit = v
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if v, err := strconv.Atoi(o); err == nil {
+			offset = v
+		}
+	}
+
+	runs, err := env.TestRunRepo.GetTestRunsByScenario(scenarioID, limit, offset)
+	if err != nil {
+		log.Printf("error in run %v", err)
+		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		http.Error(w, "Failed to retrieve test runs", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	json.NewEncoder(w).Encode(runs)
 }
 
 // ScenarioRunHandler manages POST /scenarios/{id}/run
@@ -227,7 +314,7 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 	go func(sID int, proj *repo.Test, scen *repo.Scenario) {
 		log.Printf("[SCENARIO-RUN][GOROUTINE] Starting agent for scenario_id=%d", sID)
 
-		runID, err := env.TestRunRepo.CreateTestRun(proj.ID, nil)
+		runID, err := env.TestRunRepo.CreateTestRun(sID, nil)
 		if err != nil {
 			log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to create test run entry for scenario_id=%d: %v", sID, err)
 			if _, err := env.ScenarioRepo.UpdateScenario(sID, map[string]interface{}{"status": "Fail"}); err != nil {
@@ -235,12 +322,12 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		env.TestRunRepo.UpdateTestRunStatus(runID, "running")
+		env.TestRunRepo.UpdateTestRunStatus(runID, "running", nil, nil)
 
 		llmClient, err := llm.NewLLMClient(llm.CohereProvider, llm.CohereModel)
 		if err != nil {
 			log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to create LLM client for scenario_id=%d: %v", sID, err)
-			env.TestRunRepo.UpdateTestRunStatus(runID, "failed")
+			env.TestRunRepo.UpdateTestRunStatus(runID, "failed", nil, nil)
 			if _, err := env.ScenarioRepo.UpdateScenario(sID, map[string]interface{}{"status": "Fail"}); err != nil {
 				log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to update scenario status to Fail for scenario_id=%d: %v", sID, err)
 			}
@@ -258,6 +345,7 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 
 		runStatus := "completed"
 		scenarioStatus := finalJudgement.Judgement
+		sceanrioReasoning := finalJudgement.EvidenceSummary
 		if agentErr != nil || !finalState.Fulfilled {
 			runStatus = "failed"
 			if agentErr != nil {
@@ -265,7 +353,7 @@ func (env *APIEnv) ScenarioRunHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		env.TestRunRepo.UpdateTestRunStatus(runID, runStatus)
+		env.TestRunRepo.UpdateTestRunStatus(runID, runStatus, &scenarioStatus, &sceanrioReasoning)
 		if _, err := env.ScenarioRepo.UpdateScenario(sID, map[string]interface{}{"status": scenarioStatus}); err != nil {
 			log.Printf("[SCENARIO-RUN][GOROUTINE][ERROR] Failed to update scenario status to %s for scenario_id=%d: %v", scenarioStatus, sID, err)
 		}

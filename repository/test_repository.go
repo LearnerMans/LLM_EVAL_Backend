@@ -84,8 +84,22 @@ func (r *TestRepository) GetTestByID(testID int) (*Test, error) {
 }
 
 func (r *TestRepository) DeleteTest(testID int) error {
-	_, err := r.db.Exec("DELETE FROM tests WHERE id = ?", testID)
-	return err
+	// Delete related scenarios before deleting the test
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec("DELETE FROM scenarios WHERE test_id = ?", testID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	_, err = tx.Exec("DELETE FROM tests WHERE id = ?", testID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *TestRepository) GetTestsByProject(tenantID, projectID string) ([]Test, error) {

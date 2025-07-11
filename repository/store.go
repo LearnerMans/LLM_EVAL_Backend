@@ -22,3 +22,7 @@ func NewStore(db *sql.DB) *Store {
 		TestRun:     NewTestRunRepository(db),
 	}
 }
+
+func (s *Store) GetTestRunsByTest(testID int, limit, offset int) ([]TestRun, error) {
+	return s.TestRun.GetTestRunsByTest(testID, limit, offset)
+}

@@ -49,26 +49,30 @@ func InitDB() {
 		FOREIGN KEY (test_id) REFERENCES tests(id)
 	);
 
-		CREATE TABLE IF NOT EXISTS test_runs (
+		CREATE TABLE IF NOT EXISTS runs (
 		id INTEGER PRIMARY KEY,
-		test_id INTEGER,
+		scenario_id INTEGER,
 		status TEXT DEFAULT 'Not Run',
 		started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		completed_at DATETIME,
 		verdict TEXT,
-		FOREIGN KEY (test_id) REFERENCES tests(id)
+		verdict_reasoning TEXT,
+		prompt TEXT,
+		tester_model TEXT,
+		tested_model TEXT,
+		FOREIGN KEY (scenario_id) REFERENCES scenarios(id)
 	);
 	
 	CREATE TABLE IF NOT EXISTS interactions (
 		id INTEGER PRIMARY KEY,
-		test_run_id INTEGER,
+		run_id INTEGER,
 		scenario_id INTEGER,
 		turn_number INTEGER,
 		user_message TEXT,
 		llm_response TEXT,
 		evaluation_result TEXT,
 		evaluation_reasoning TEXT,
-		FOREIGN KEY (test_run_id) REFERENCES test_runs(id)
+		FOREIGN KEY (run_id) REFERENCES runs(id)
 	);`
 
 	_, err = db.Exec(schema)
